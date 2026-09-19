@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Agent Runtime</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◆</text></svg>" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">◆</span>
+          <div class="brand-text">
+            <h1>Agent Runtime</h1>
+            <p class="brand-sub" id="brand-sub">connecting…</p>
+          </div>
+        </div>
+
+        <div class="topbar-actions">
+          <label class="sr-only" for="agent">Agent</label>
+          <select class="select" id="agent" aria-label="Agent"></select>
+          <label class="sr-only" for="model">Model</label>
+          <select class="select" id="model" aria-label="Model"></select>
+          <span class="meter" id="session-usage" hidden title="Total for this conversation">
+            <span class="meter-label">session</span>
+            <span id="session-usage-text">0 tok · $0.00</span>
+          </span>
+          <span class="status" id="status" data-state="idle">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span id="status-text">Idle</span>
+          </span>
+          <button type="button" class="btn btn-ghost" id="toggle-trace" aria-pressed="false">
+            Trace
+          </button>
+          <button type="button" class="btn btn-ghost" id="new-chat">New chat</button>
+        </div>
+      </header>
+
+      <div class="notice" id="email-notice" hidden role="status">
+        <strong>Dry run</strong>
+        <span id="email-notice-text">Email is composed and validated, but nothing is sent.</span>
+      </div>
+
+      <main class="main">
+        <aside class="sidebar" id="sidebar" aria-label="Agents and tools">
+          <div class="sidebar-head">
+            <h2>Agents</h2>
+            <span class="sidebar-count" id="agent-count"></span>
+          </div>
+          <p class="sidebar-note">
+            The orchestrator routes each message. Click an agent to pin every message to it.
+          </p>
+          <ul class="agent-list" id="agent-list"></ul>
+          <div class="sidebar-foot">
+            <button type="button" class="btn btn-ghost btn-sm" id="clear-agent" hidden>
+              Back to auto routing
+            </button>
+          </div>
+        </aside>
+
+        <section class="chat" aria-label="Conversation">
+          <div class="transcript" id="transcript" role="log" aria-live="polite" aria-busy="false">
+            <div class="empty-state" id="empty-state">
+              <div class="empty-mark" aria-hidden="true">◆</div>
+              <h2>Ask an agent for something</h2>
+              <p>
+                The orchestrator picks which agent handles it, then every step is streamed
+                live — the model's tokens, each tool it calls, what that tool returned, and
+                what the message cost in tokens and dollars.
+              </p>
+              <div class="suggestions" id="suggestions">
+                <button type="button" class="chip" data-prompt="Email alex@example.com to let them know Friday's release slipped to Tuesday, and that I'll send the new plan tomorrow.">
+                  Tell someone a date slipped
+                </button>
+                <button type="button" class="chip" data-prompt="Write a short thank-you email to sam@example.com for covering my on-call shift last weekend.">
+                  Send a thank-you note
+                </button>
+                <button type="button" class="chip" data-prompt="Find me a good YouTube video explaining how Kalman filters work, ideally under 20 minutes.">
+                  Find a video explainer
+                </button>
+                <button type="button" class="chip" data-prompt="Search YouTube for the official trailer for Dune Part Two and send me the link.">
+                  Look up a trailer
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <form class="composer" id="composer" autocomplete="off">
+            <div class="composer-box">
+              <label class="sr-only" for="input">Message</label>
+              <textarea
+                id="input"
+                name="input"
+                rows="1"
+                placeholder="Ask the agent something…"
+                maxlength="8000"
+              ></textarea>
+              <div class="composer-actions">
+                <button type="button" class="btn btn-stop" id="stop" hidden>Stop</button>
+                <button type="submit" class="btn btn-primary" id="send">
+                  <span>Send</span>
+                </button>
+              </div>
+            </div>
+            <p class="composer-hint">
+              <kbd>Enter</kbd> to send · <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line
+            </p>
+          </form>
+        </section>
+
+        <aside class="trace" id="trace" hidden aria-label="Run trace">
+          <div class="trace-head">
+            <h2>Run trace</h2>
+            <button type="button" class="btn btn-ghost btn-sm" id="clear-trace">Clear</button>
+          </div>
+          <p class="trace-note">Raw events from routing and the agent loop, newest last.</p>
+          <ol class="trace-list" id="trace-list"></ol>
+        </aside>
+      </main>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
