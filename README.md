@@ -10,7 +10,7 @@ Two specialists ship today:
 | Agent | What it does | Tool |
 |---|---|---|
 | **email** | Writes and sends plain-text email over SMTP | `send_email` |
-| **youtube** | Finds videos and returns working watch links | `search_youtube` |
+| **youtube** | Finds videos, returns working watch links, and fetches transcripts | `search_youtube`, `get_youtube_transcript` |
 
 The orchestrator routes each message to one of them — and the third agent
 is a registration, not a rewrite.
@@ -49,11 +49,12 @@ server logs, consuming the streaming API, or asserting on them in a test.
 ┌──────────────┐  messages  ┌─────────────┐  tool calls  ┌────────────────┐
 │  AgentLoop   │ ─────────▶ │ OpenAIModel │ ───────────▶ │ send_email     │
 │ (think/act/  │ ◀───────── │ (LangChain) │              │ search_youtube │
+│              │            │             │              │ get_…transcript│
 │  observe)    │ turn+usage └─────────────┘              └───────┬────────┘
 └──────┬───────┘                                                 │
        │ events                         ┌────────────────────────▼───────────┐
        ▼                                │ EmailPolicy + Transport (SMTP/dry) │
-┌──────────────┐ ── /v1/chat            │ YouTube client (links are built)   │
+┌──────────────┐ ── /v1/chat            │ YouTube + transcript clients       │
 │  FastAPI     │ ── /v1/chat/stream     └────────────────────────────────────┘
 │  routes      │ ── /v1/agents  /v1/models
 └──────────────┘
@@ -70,7 +71,7 @@ src/agent_runtime/
   agents/
     base.py           AgentSpec: name, prompt, tools, readiness — an agent is data
     email_agent.py     The email specialist and its instructions
-    youtube_agent.py    The video-search specialist
+    youtube_agent.py    The video search + transcript specialist
     registry.py          Name -> spec; first registered is the default
   agent/
     loop.py           The agent loop itself (think/act/observe, budgets, events)
@@ -84,11 +85,13 @@ src/agent_runtime/
   youtube/
     search.py         VideoResult + query rules; links are built, never echoed
     client.py          API / Unconfigured / Fake clients behind one protocol
+    transcript.py       Transcript types, link -> video id, formatting + truncation
+    transcript_client.py Library / Fake transcript clients behind one protocol
   tools/
     base.py           Tool contract (name, args schema, run())
     registry.py        Name -> Tool lookup, schema export for function-calling
     email_tools.py      send_email
-    youtube_tools.py     search_youtube
+    youtube_tools.py     search_youtube, get_youtube_transcript
   api/
     app.py            FastAPI app factory (CORS, lifespan, errors, UI mount)
     routes.py          /health, /v1/agents, /v1/models, /v1/chat, /v1/chat/stream
@@ -173,6 +176,36 @@ Search is capped at `type=video`, and an over-large `max_results` is clamped
 rather than rejected — the exact number is incidental to what the user asked
 for. The free API quota is 10,000 units/day and a search costs 100, so
 roughly 100 searches a day.
+
+## Transcribing videos
+
+`get_youtube_transcript` takes a watch, youtu.be, Shorts, embed or live link
+(or a bare 11-character id) and returns the video's captions, so the agent
+can transcribe, summarise, quote or answer questions about what was said.
+Ask "summarise the latest Kalman filter talk" and it searches first, then
+transcribes the best match.
+
+It reads the caption tracks the YouTube player shows, via
+[`youtube-transcript-api`](https://github.com/jdepoix/youtube-transcript-api).
+The Data API's captions endpoint only serves videos you own. This needs **no
+API key**, so without `YOUTUBE_API_KEY` the agent is still marked ready and
+can transcribe any link you give it. Only search is unavailable.
+
+```
+YOUTUBE_TRANSCRIPT_LANGUAGES=en        # preferred, in order; else any track, labelled
+YOUTUBE_TRANSCRIPT_MAX_CHARS=20000     # longer transcripts are cut, and the cut announced
+```
+
+The same concern about fabrication applies here: a model asked to summarise a
+video will happily summarise the one it imagines from the title. So the
+prompt requires every claim about a video to come from its transcript. A
+truncated result says how far it got (e.g. "up to about 12:40 of 58:02") so
+the agent can say its summary is partial. Disabled captions, removed videos
+and blocked requests each come back as a plain error to relay, not a guess.
+
+Caveat: YouTube often blocks these requests from cloud-provider IPs. The
+tool then reports that transcripts are unavailable from this server. The
+library supports proxies if you need to run it there.
 
 ## Sending for real
 
@@ -326,7 +359,8 @@ mypy
 
 The suite never calls OpenAI or YouTube, never opens a socket, and never
 sends mail: `tests/fakes.py` provides a `FakeChatModel` replaying scripted
-turns, `RecordingTransport` stands in for SMTP, and `FakeYouTubeClient` (plus
+turns, `RecordingTransport` stands in for SMTP, `FakeTranscriptClient` stands in
+for caption fetching, and `FakeYouTubeClient` (plus
 `httpx.MockTransport` for the real client's request shape) stands in for the
 API. Routing, the loop's control flow, the email guardrails, link
 construction and token accounting are all tested deterministically.

@@ -27,6 +27,7 @@ from agent_runtime.youtube.client import (
     UnconfiguredYouTubeClient,
     YouTubeClient,
 )
+from agent_runtime.youtube.transcript_client import LibraryTranscriptClient, TranscriptClient
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,7 @@ def build_agents(
     settings: Settings,
     transport: EmailTransport | None = None,
     youtube_client: YouTubeClient | None = None,
+    transcript_client: TranscriptClient | None = None,
 ) -> AgentRegistry:
     """Every agent this runtime can route to.
 
@@ -102,6 +104,9 @@ def build_agents(
             client,
             default_results=settings.youtube_max_results,
             max_results=settings.youtube_result_ceiling,
+            transcript_client=transcript_client or LibraryTranscriptClient(),
+            transcript_languages=settings.transcript_languages,
+            transcript_max_chars=settings.youtube_transcript_max_chars,
         ),
     ]
     return AgentRegistry(agents)

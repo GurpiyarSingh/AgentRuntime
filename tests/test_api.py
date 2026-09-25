@@ -84,7 +84,7 @@ def test_agents_endpoint_lists_every_agent_with_its_tools() -> None:
     agents = {agent["name"]: agent for agent in body["agents"]}
     assert list(agents) == ["email", "youtube"]
     assert agents["email"]["tools"] == ["send_email"]
-    assert agents["youtube"]["tools"] == ["search_youtube"]
+    assert agents["youtube"]["tools"] == ["search_youtube", "get_youtube_transcript"]
     assert all(agent["label"] and agent["description"] for agent in agents.values())
 
 
@@ -95,8 +95,8 @@ def test_agents_endpoint_reports_readiness_honestly() -> None:
     # Email works in dry run, so it is ready but carries a caveat.
     assert agents["email"]["ready"] is True
     assert "Dry run" in agents["email"]["status"]
-    # YouTube has no key here, so it says so rather than failing later.
-    assert agents["youtube"]["ready"] is False
+    # YouTube has no key here: transcripts still work, but search is flagged.
+    assert agents["youtube"]["ready"] is True
     assert "YOUTUBE_API_KEY" in agents["youtube"]["status"]
 
 

@@ -84,6 +84,13 @@ class Settings(BaseSettings):
     # Hard ceiling, whatever the model asks for.
     youtube_result_ceiling: int = Field(default=10, ge=1, le=50)
     youtube_timeout_s: float = Field(default=15.0, gt=0)
+    # Transcripts need no API key. Preferred caption languages, in order
+    # (e.g. "en,en-GB"); a video with none of them falls back to whatever
+    # track it has, labelled with its real language.
+    youtube_transcript_languages: str = "en"
+    # Longest transcript handed to the model, in characters. A long talk
+    # can run to 100k+; past this it is cut and the cut is announced.
+    youtube_transcript_max_chars: int = Field(default=20_000, ge=1_000, le=200_000)
 
     # --- Agent loop budget ---------------------------------------------------
     max_steps: int = Field(default=8, ge=1, le=50)
@@ -142,6 +149,12 @@ class Settings(BaseSettings):
     def can_search_youtube(self) -> bool:
         """True when a YouTube API key is available."""
         return self.youtube_api_key is not None
+
+    @property
+    def transcript_languages(self) -> list[str]:
+        """Preferred caption languages, in order (comma-separated in the environment)."""
+        codes = [code.strip() for code in self.youtube_transcript_languages.split(",")]
+        return [code for code in codes if code] or ["en"]
 
     @property
     def cors_origins(self) -> list[str]:
