@@ -1,0 +1,120 @@
+.item {
+  border-radius: var(--radius);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+}
+
+.header:hover {
+  background: var(--surface-muted);
+}
+
+.chevron,
+.chevronOpen {
+  flex: none;
+  margin-top: 4px;
+  color: var(--text-subtle);
+  transition: transform 120ms ease;
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
+}
+
+.titles {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.name {
+  font-family: var(--font-mono);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.summary {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.uses {
+  flex: none;
+  padding: 1px 7px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 999px;
+}
+
+.panel {
+  padding: 2px 10px 10px 32px;
+  font-size: 0.82rem;
+}
+
+.description {
+  margin: 0 0 10px;
+  color: var(--text-muted);
+}
+
+.params {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+
+.param dt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.param dd {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+}
+
+.paramName {
+  font-weight: 600;
+}
+
+.paramType {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-subtle);
+}
+
+.required,
+.default {
+  padding: 0 6px;
+  font-size: 0.7rem;
+  border-radius: 999px;
+}
+
+.required {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.default {
+  color: var(--text-muted);
+  background: var(--surface-muted);
+}
+
+.noParams {
+  margin: 0;
+  color: var(--text-subtle);
+}

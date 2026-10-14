@@ -1,0 +1,154 @@
+.composer {
+  width: 100%;
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 0 20px 14px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 4px 3px 10px;
+  font-size: 0.8rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.uploading {
+  color: var(--text-muted);
+}
+
+.error {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+}
+
+.chipName {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.chipNote {
+  flex: none;
+  font-size: 0.74rem;
+  color: var(--text-subtle);
+}
+
+.error .chipNote {
+  color: var(--danger);
+}
+
+.chipRemove {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  color: var(--text-subtle);
+  background: none;
+  border: none;
+  border-radius: 50%;
+}
+
+.chipRemove:hover {
+  color: var(--text);
+  background: var(--surface-muted);
+}
+
+.box {
+  display: flex;
+  gap: 6px;
+  align-items: flex-end;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+
+.box:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.textarea {
+  flex: 1;
+  min-height: 36px;
+  padding: 7px 4px;
+  line-height: 1.45;
+  resize: none;
+  background: none;
+  border: none;
+  outline: none;
+}
+
+.textarea:focus-visible {
+  box-shadow: none;
+}
+
+.iconButton,
+.send,
+.stop {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius);
+}
+
+.iconButton {
+  color: var(--text-muted);
+  background: none;
+}
+
+.iconButton:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-muted);
+}
+
+.iconButton:disabled {
+  opacity: 0.4;
+}
+
+.send {
+  color: var(--accent-contrast);
+  background: var(--accent);
+}
+
+.send:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.send:disabled {
+  opacity: 0.35;
+}
+
+.stop {
+  color: var(--text);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-strong);
+}
+
+.hint {
+  margin: 6px 4px 0;
+  font-size: 0.74rem;
+  color: var(--text-subtle);
+  text-align: center;
+}

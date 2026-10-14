@@ -1,0 +1,147 @@
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  width: var(--sidebar-width);
+  height: 100%;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  font-weight: 700;
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-radius: var(--radius);
+}
+
+.title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.statusUp,
+.statusDown,
+.statusPending {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+}
+
+.statusUp::before,
+.statusDown::before,
+.statusPending::before {
+  width: 7px;
+  height: 7px;
+  content: '';
+  border-radius: 50%;
+}
+
+.statusUp {
+  color: var(--success);
+}
+
+.statusUp::before {
+  background: var(--success);
+}
+
+.statusDown {
+  color: var(--danger);
+}
+
+.statusDown::before {
+  background: var(--danger);
+}
+
+.statusPending {
+  color: var(--text-subtle);
+}
+
+.statusPending::before {
+  background: var(--text-subtle);
+}
+
+.readOnly {
+  padding: 0 6px;
+  color: var(--warning);
+  background: var(--warning-soft);
+  border-radius: 999px;
+}
+
+.close {
+  display: none;
+  padding: 6px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.section {
+  flex: 1;
+  min-height: 0;
+  padding: 12px 8px;
+  overflow-y: auto;
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  padding: 0 10px;
+  font-size: 0.75rem;
+  font-weight: 650;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.count {
+  padding: 0 7px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  background: var(--surface-muted);
+  border-radius: 999px;
+}
+
+/* Narrow screens: the sidebar becomes an overlay drawer. */
+@media (max-width: 860px) {
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 20;
+    width: min(var(--sidebar-width), 88vw);
+    box-shadow: 0 0 40px rgb(0 0 0 / 25%);
+    transform: translateX(-100%);
+    transition: transform 180ms ease;
+  }
+
+  .open {
+    transform: none;
+  }
+
+  .close {
+    display: block;
+  }
+}

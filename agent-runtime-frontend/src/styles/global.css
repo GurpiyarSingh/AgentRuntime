@@ -1,0 +1,136 @@
+/*
+ * Design tokens and base element styles. Components use these variables
+ * only, never raw colours, so the light and dark themes stay complete.
+ */
+
+:root {
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
+
+  --bg: #f7f7f8;
+  --surface: #ffffff;
+  --surface-muted: #f1f1f4;
+  --surface-sunken: #ebebef;
+  --border: #e2e2e8;
+  --border-strong: #c9c9d3;
+  --text: #17171c;
+  --text-muted: #5d5d6b;
+  --text-subtle: #8a8a99;
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-contrast: #ffffff;
+  --accent-soft: #eef0ff;
+  --success: #15803d;
+  --success-soft: #e8f6ed;
+  --danger: #c2261d;
+  --danger-soft: #fdecea;
+  --warning: #a15c07;
+  --warning-soft: #fdf3e2;
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
+
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --shadow: 0 1px 2px rgb(16 16 24 / 6%), 0 1px 3px rgb(16 16 24 / 8%);
+  --sidebar-width: 320px;
+
+  color-scheme: light;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f0f13;
+    --surface: #17171d;
+    --surface-muted: #1e1e26;
+    --surface-sunken: #121217;
+    --border: #2a2a34;
+    --border-strong: #3a3a47;
+    --text: #ececf1;
+    --text-muted: #a3a3b2;
+    --text-subtle: #737384;
+    --accent: #818cf8;
+    --accent-hover: #a5b4fc;
+    --accent-contrast: #0f0f13;
+    --accent-soft: #1f2040;
+    --success: #4ade80;
+    --success-soft: #11291b;
+    --danger: #f87171;
+    --danger-soft: #2f1416;
+    --warning: #fbbf24;
+    --warning-soft: #2c2210;
+    --shadow: 0 1px 2px rgb(0 0 0 / 40%);
+    color-scheme: dark;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+code,
+pre {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+}
+
+/* Visually hidden but available to screen readers. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

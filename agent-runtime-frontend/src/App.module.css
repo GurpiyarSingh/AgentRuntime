@@ -1,0 +1,19 @@
+.app {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
+.scrim {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: block;
+    background: rgb(0 0 0 / 35%);
+  }
+}

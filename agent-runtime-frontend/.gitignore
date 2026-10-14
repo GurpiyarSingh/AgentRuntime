@@ -1,0 +1,24 @@
+# Ignore rules for the agent-runtime frontend.
+
+# --- Dependencies and build output ---------------------------------------------
+node_modules/
+/dist/
+/coverage/
+*.tsbuildinfo
+
+# --- Local environment ------------------------------------------------------------
+# .env.local and friends may hold an API key or a private backend URL.
+.env.local
+.env.*.local
+
+# --- Logs -------------------------------------------------------------------------
+npm-debug.log*
+*.log
+
+# --- Editors and OS ---------------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini

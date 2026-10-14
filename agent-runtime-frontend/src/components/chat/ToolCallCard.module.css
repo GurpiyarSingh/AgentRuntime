@@ -1,0 +1,160 @@
+.card {
+  margin: 6px 0;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding-right: 8px;
+}
+
+.header {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 10px;
+  font-size: 0.85rem;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+}
+
+.statusIcon {
+  flex: none;
+}
+
+.running .statusIcon,
+.running .spin {
+  color: var(--accent);
+}
+
+.ok .statusIcon {
+  color: var(--success);
+}
+
+.error .statusIcon {
+  color: var(--danger);
+}
+
+.cancelled .statusIcon {
+  color: var(--text-subtle);
+}
+
+.spin {
+  flex: none;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.name {
+  flex: none;
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.target {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.duration {
+  flex: none;
+  font-size: 0.78rem;
+  color: var(--text-subtle);
+}
+
+.chevron,
+.chevronOpen {
+  flex: none;
+  color: var(--text-subtle);
+  transition: transform 120ms ease;
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
+}
+
+.downloadWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 6px 10px;
+}
+
+.row > .downloadWrap {
+  padding: 4px 0;
+}
+
+.download {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--accent);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.download:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.downloadError {
+  font-size: 0.78rem;
+  color: var(--danger);
+}
+
+.body {
+  padding: 0 10px 10px;
+  font-size: 0.8rem;
+}
+
+.label {
+  margin: 6px 0 4px;
+  font-size: 0.72rem;
+  font-weight: 650;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pre {
+  max-height: 260px;
+  margin: 0;
+  padding: 8px 10px;
+  overflow: auto;
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.note {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+}

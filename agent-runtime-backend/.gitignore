@@ -1,0 +1,58 @@
+# Ignore rules for the agent-runtime backend. Patterns starting with "/" are
+# anchored to this folder; the rest match at any depth below it.
+
+# --- Secrets ------------------------------------------------------------------
+# .env holds OPENAI_API_KEY and API_KEY. Only the template is committed.
+.env
+.env.*
+!.env.example
+
+# --- Runtime data -------------------------------------------------------------
+# The agent's default workspace (WORKSPACE_DIR=data/workspace): user uploads and
+# files the agent creates. Never commit it. If you point WORKSPACE_DIR at
+# another folder inside this project, add it here too.
+/data/
+/logs/
+*.log
+
+# --- Python -------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+/build/
+/dist/
+pip-wheel-metadata/
+
+# --- Virtual environments -----------------------------------------------------
+/venv/
+/.venv/
+/env/
+
+# --- Test, lint and type-check caches -------------------------------------------
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+
+# --- Claude Code ----------------------------------------------------------------
+# Keep shared project config (.claude/skills/, .claude/settings.json) in git;
+# ignore per-machine state and personal settings.
+.claude/*.lock
+.claude/settings.local.json
+
+# --- Editors and OS -------------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
