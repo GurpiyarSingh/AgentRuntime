@@ -1,0 +1,73 @@
+# nginx config for the Agent Runtime web app (rendered at container start).
+#
+# The official nginx image runs envsubst on /etc/nginx/templates/*.template,
+# replacing ${VAR} with environment variables that are set; nginx's own
+# variables ($uri, $host, ...) are left untouched. Settings:
+#
+#   BACKEND_URL           Where the API lives, scheme://host:port, no path
+#                         (default http://backend:8000).
+#   CLIENT_MAX_BODY_SIZE  Largest upload (default 30m; keep it above the
+#                         backend's MAX_FILE_BYTES plus multipart overhead).
+#   CSP_CONNECT_SRC       Extra origins the page may call, for a backend on
+#                         another origin (default 'self').
+
+server {
+    listen 8080;
+    server_name _;
+    root /usr/share/nginx/html;
+    server_tokens off;
+
+    # Security headers, set once here. They apply to every location because
+    # no location uses add_header (that would silently drop these); caching
+    # is set with `expires`, which doesn't.
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src ${CSP_CONNECT_SRC}; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+
+    gzip on;
+    gzip_min_length 1024;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+
+    # Liveness for the container healthcheck; doesn't touch the backend.
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    # The API, proxied so the browser sees a single origin (no CORS).
+    location ~ ^/(v1|health)(/|$) {
+        proxy_pass ${BACKEND_URL};
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Chat replies stream as Server-Sent Events: pass each event through
+        # as it arrives instead of buffering the whole reply, and allow long
+        # agent runs.
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+
+        client_max_body_size ${CLIENT_MAX_BODY_SIZE};
+    }
+
+    # Built assets have content hashes in their names: cache them for a year.
+    location /assets/ {
+        expires 1y;
+        try_files $uri =404;
+    }
+
+    # Everything else is the single-page app; index.html is always revalidated
+    # so a new deployment is picked up on the next load.
+    location / {
+        expires -1;
+        try_files $uri $uri/ /index.html;
+    }
+}

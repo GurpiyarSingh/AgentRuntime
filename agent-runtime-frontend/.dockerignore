@@ -1,0 +1,22 @@
+# Keep the build context to what `npm ci` and `npm run build` need.
+
+# Dependencies are installed fresh inside the image, for Linux.
+node_modules/
+
+# Build output and caches
+dist/
+coverage/
+*.tsbuildinfo
+
+# Local overrides may hold a private backend URL; build args set VITE_* instead.
+.env.local
+.env.*.local
+
+# Not needed to build
+.git/
+.gitignore
+.dockerignore
+Dockerfile
+docs/
+*.md
+*.log

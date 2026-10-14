@@ -111,6 +111,8 @@ because the editable install records the absolute path to `src/`.
 on `http://127.0.0.1:8000`, with interactive API docs at `/docs`. The workspace
 (`data/workspace` by default) is created on first use.
 
+To run the API in a container instead, see the **[Docker guide](DOCKER.md)**.
+
 ## Using the CLI
 
 | Command | Purpose |

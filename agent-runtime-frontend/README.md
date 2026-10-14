@@ -58,8 +58,12 @@ in `.env.local` (see [.env.example](.env.example)).
 
 ## Deploying
 
-`npm run build` produces static files in `dist/`. Serve them however you like.
-There are two setups.
+**With Docker:** the [Dockerfile](Dockerfile) builds an unprivileged nginx
+image that serves the app and proxies the API, already configured for
+streaming. See the **[Docker guide](DOCKER.md)**.
+
+**Without Docker:** `npm run build` produces static files in `dist/`. Serve
+them however you like. There are two setups.
 
 **Same origin (recommended).** Serve `dist/` and proxy the API paths to the
 backend from one host. Leave `VITE_API_BASE_URL` empty. Example nginx config:

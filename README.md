@@ -117,6 +117,29 @@ calls to the backend, so no CORS setup is needed.
 
 ---
 
+## Running with Docker
+
+Each part has its own `Dockerfile`, and [`docker-compose.yml`](docker-compose.yml)
+at the root runs both together. With Docker Desktop running and
+`agent-runtime-backend/.env` containing your OpenAI key, run from this folder:
+
+```powershell
+docker compose up --build -d      # build and start the API and the web app
+```
+
+Then open **http://localhost:8080**. Stop with `docker compose down`; the
+workspace files are kept in a Docker volume.
+
+Step-by-step instructions for building and running each image, configuration,
+and troubleshooting:
+
+- [Backend Docker guide](agent-runtime-backend/DOCKER.md): the API image, the
+  CLI in a container, getting files in and out
+- [Frontend Docker guide](agent-runtime-frontend/DOCKER.md): Compose, separate
+  containers, or a backend elsewhere
+
+---
+
 ## Three ways to use it
 
 | Mode | Start it with | Best for |
@@ -143,6 +166,8 @@ Main API endpoints:
 | [Web App User Guide](agent-runtime-frontend/USER_GUIDE.md) | Use the web app, in plain language |
 | [Backend README](agent-runtime-backend/README.md) | Understand the architecture, the API, configuration, and adding tools |
 | [Frontend README](agent-runtime-frontend/README.md) | Develop, test and deploy the web app |
+| [Backend Docker guide](agent-runtime-backend/DOCKER.md) | Build and run the API as a Docker container |
+| [Frontend Docker guide](agent-runtime-frontend/DOCKER.md) | Build and run the web app in Docker, alone or with Compose |
 
 ---
 
@@ -194,5 +219,6 @@ npm run build          # production build into dist/
   is in use.
 - **Files the agent reads are sent to OpenAI** for processing.
 
-For production deployment (static web app plus reverse proxy, streaming
-settings), see the [Frontend README](agent-runtime-frontend/README.md#deploying).
+For production deployment, see the Docker guides above, or the
+[Frontend README](agent-runtime-frontend/README.md#deploying) for serving the
+web app behind your own reverse proxy.

@@ -1,0 +1,35 @@
+# Only pyproject.toml, README.md and src/ are needed to build the image.
+# Everything else stays out of the build context, above all secrets and the
+# local workspace.
+
+# Secrets: never bake .env into an image; pass it with --env-file at run time.
+.env
+.env.*
+
+# Local runtime data and environments
+data/
+venv/
+.venv/
+env/
+
+# Caches and build output
+**/__pycache__/
+**/*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Not needed in the image
+tests/
+.claude/
+.git/
+.gitignore
+.dockerignore
+Dockerfile
+USER_GUIDE.md
+*.log
