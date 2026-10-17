@@ -29,6 +29,10 @@ export interface Tool {
   name: string;
   description: string;
   parameters: ToolParameters;
+  /** Built in, or from a connected MCP server (absent on older servers). */
+  source?: 'builtin' | 'mcp';
+  /** The MCP server it comes from. */
+  server?: string | null;
 }
 
 export interface ToolsResponse {
@@ -64,6 +68,8 @@ export interface Health {
   };
   /** True when sessions are stored in a database and listed at `/v1/sessions`. */
   history?: boolean;
+  /** True when MCP servers can be managed at `/v1/mcp`. */
+  mcp?: boolean;
 }
 
 /** `GET /v1/directories` item: a folder on the server. */
@@ -128,6 +134,76 @@ export interface User {
 export interface LoginResponse {
   token: string;
   user: User;
+}
+
+// --- MCP servers (`/v1/mcp`) ----------------------------------------------------
+
+/** Stands in for a stored secret (env or header value); sent back, it means "unchanged". */
+export const MCP_MASK = '••••••••';
+
+export type McpTransport = 'stdio' | 'http' | 'sse';
+
+export type McpStatus = 'disabled' | 'connecting' | 'connected' | 'error';
+
+/** How to reach one MCP server (Claude Desktop's format, plus `enabled` and `timeout_s`). */
+export interface McpServerConfig {
+  type: McpTransport;
+  command: string | null;
+  args: string[];
+  env: Record<string, string>;
+  cwd: string | null;
+  url: string | null;
+  headers: Record<string, string>;
+  enabled: boolean;
+  timeout_s: number;
+  description: string;
+}
+
+export interface McpTool {
+  /** The tool's own name on the server. */
+  name: string;
+  /** The name the agent calls it by: `server__tool`. */
+  qualified_name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+}
+
+export interface McpServer {
+  name: string;
+  /** Secrets are masked with `MCP_MASK`. */
+  config: McpServerConfig;
+  status: McpStatus;
+  error: string | null;
+  server_name: string | null;
+  server_version: string | null;
+  connected_at: string | null;
+  tools: McpTool[];
+}
+
+/** `GET /v1/mcp/servers`. */
+export interface McpServersResponse {
+  servers: McpServer[];
+  /** False for signed-in non-admins: they can look but not change. */
+  can_manage: boolean;
+  /** False when local (stdio) servers are turned off on the server. */
+  allow_stdio: boolean;
+}
+
+/** `POST /v1/mcp/test`. */
+export interface McpTestResult {
+  ok: boolean;
+  duration_s: number;
+  error: string | null;
+  server_name: string | null;
+  server_version: string | null;
+  tools: McpTool[];
+}
+
+/** `POST /v1/mcp/import`. */
+export interface McpImportResult {
+  added: string[];
+  replaced: string[];
+  skipped: string[];
 }
 
 // --- Stored sessions (`/v1/sessions`, when the server has a database) ----------

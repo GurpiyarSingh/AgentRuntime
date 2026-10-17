@@ -172,6 +172,31 @@ agent-runtime users list            # see everyone, and when they last signed in
 > **Changed `.env`?** Stop the service (**Ctrl+C**) and start it again. It reads
 > its settings only when it starts.
 
+### Optional: connect other tools (MCP servers)
+
+The assistant can also use tools from other services: GitHub, Jira, a real web
+browser (Playwright), and thousands more. These come as **MCP servers** (MCP is
+the Model Context Protocol, a common way for AI assistants to plug into tools).
+
+The easiest way to add one is in the web app: click **Manage** next to
+**Integrations** on the left, pick a template, fill in your token, and click
+**Test connection**. The
+[Web App User Guide](../agent-runtime-frontend/USER_GUIDE.md#integrations-mcp-servers)
+walks through it.
+
+Many servers are started with one of two helper programs, which must be
+installed on the computer running the assistant service:
+
+- **`npx`** comes with [Node.js](https://nodejs.org) (Playwright, GitHub
+  tools, files, memory).
+- **`uvx`** comes with [uv](https://docs.astral.sh/uv/getting-started/installation/)
+  (Jira and Confluence, web page fetching).
+
+Servers on the internet (like GitHub's) need neither: they're reached by
+address. Connected servers work in the command line too: `chat` and `ask`
+connect them automatically and show `[mcp] github: 41 tools`. Add
+`--no-mcp` to skip them.
+
 ---
 
 ## Every time you use it
@@ -386,6 +411,10 @@ You can set a monthly spending limit on your OpenAI account at
   `WORKSPACE_BROWSE_ROOTS=D:\Shared` to `.env`.
 - **With a database, everyone signs in** and sees only their own
   conversations. Passwords are stored scrambled (hashed), never as written.
+- **An MCP server is a program or service you choose to trust.** A local one
+  runs on the computer with the assistant service; a remote one receives what
+  the assistant sends it. Only add servers you trust, and give tokens only the
+  permissions the assistant needs. With sign-in, only admins can add them.
 - Your files are sent to OpenAI so the AI can read them. Don't use it on
   documents you're not allowed to share with an outside service.
 
@@ -411,6 +440,9 @@ You can set a monthly spending limit on your OpenAI account at
 | The web app doesn't show a sign-in page, or **Conversations**, after adding `DATABASE_URL` | The service only reads `.env` when it starts. Stop it with **Ctrl+C** and start it again. |
 | `accounts need a database` from `agent-runtime users` | Add `DATABASE_URL` to `.env` first. |
 | `The username ... is taken` | Pick another name. Usernames ignore upper and lower case. |
+| An MCP server says `Couldn't start 'npx'` (or `'uvx'`): not found | Install Node.js (for `npx`) or uv (for `uvx`), open a new terminal, and restart the service. |
+| An MCP server says `The server answered HTTP 401` | The token in its headers is wrong or expired. Edit the server and paste a new one. |
+| An MCP server says `didn't answer within 60s` | A first start may still be downloading. Edit the server, open **Advanced**, and raise the timeout. |
 
 ---
 
@@ -424,6 +456,7 @@ agent-runtime tools                     See what the assistant can do
 agent-runtime models                    See which AI models you can choose
 agent-runtime users add NAME            Create a web app account (needs a database)
 agent-runtime users list                See every account
+agent-runtime chat --no-mcp             Chat without connecting MCP servers
 agent-runtime --help                    Show all commands
 agent-runtime chat --help               Show all options for a command
 

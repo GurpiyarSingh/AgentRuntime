@@ -31,6 +31,11 @@ outside it. By default that's `WORKSPACE_DIR`; a request may name another
 existing directory instead (the web app's folder picker), within limits you
 set.
 
+It is also a **universal MCP client**: connect any
+[Model Context Protocol](https://modelcontextprotocol.io) server, local
+(stdio) or remote (streamable HTTP, SSE), and its tools join the agent's
+toolbox as `server__tool`. See [MCP servers](#mcp-servers).
+
 With `DATABASE_URL` set (PostgreSQL, or SQLite), the runtime also keeps
 **every conversation and a full activity log** (each event, tool call, token
 count and cost), and the web app **signs people in**, each seeing only their
@@ -91,6 +96,10 @@ src/agent_runtime/
     readers.py     Any file -> text (PDF, DOCX, XLSX, PPTX, archives, encodings)
     writers.py     Text -> any file (Markdown -> DOCX/PDF, CSV/JSON -> XLSX, ...)
     images.py      Any raster image -> a scaled PNG/JPEG for the model
+  mcp_client/
+    config.py      MCP server configs, JSON import (Claude/VS Code), the config file
+    client.py      One connection (stdio, HTTP, SSE), and MCP tool -> runtime Tool
+    manager.py     Keeps every enabled server connected; trial connections
   storage/
     tables.py      Database schema: users, tokens, sessions, messages, runs, events, tool calls
     store.py       DatabaseStore: persistent history + the run recorder
@@ -103,6 +112,7 @@ src/agent_runtime/
     directories.py /v1/directories: browse the server's folders
     sessions.py    /v1/sessions: list, open, rename, delete stored conversations
     auth.py        /v1/auth: setup, login, logout, me
+    mcp.py         /v1/mcp: servers, test, import, reconnect
     schemas.py     Request/response models
     deps.py        Dependency wiring; who is calling (token, API key, or open)
   auth.py          Password hashing (scrypt), tokens, login throttling, Principal
@@ -149,6 +159,10 @@ To run the API in a container instead, see the **[Docker guide](DOCKER.md)**.
 | `agent-runtime models` | List selectable models and their prices. |
 | `agent-runtime users add NAME` | Create a web app account (asks for the password twice; `--admin`, `--display-name`, `--password-stdin` for scripts). Needs `DATABASE_URL`. |
 | `agent-runtime users list` | Show every account and when it last signed in. |
+
+`chat` and `ask` also connect the enabled [MCP servers](#mcp-servers) and give
+the agent their tools; add `--no-mcp` to skip them. `serve` takes
+`--mcp-config FILE` to use another MCP servers file.
 
 `chat` and `ask` take `--workspace DIR`, `--read-only`, `--model ID`,
 `--max-steps N`, `--no-stream`, `-q/--quiet` and `-v/--verbose`. `serve` and
@@ -246,6 +260,14 @@ off, `404` for someone else's session, and `503` when the server has no
 | `POST` | `/v1/auth/login` | Username + password -> token (public) |
 | `POST` | `/v1/auth/logout` | Revoke this token |
 | `GET` | `/v1/auth/me` | The signed-in account |
+| `GET` | `/v1/mcp/servers` | Every MCP server: config (secrets masked), status, error, tools |
+| `POST` | `/v1/mcp/servers` | Add one (`{"name": ..., "config": {...}}`) and connect it |
+| `PUT` | `/v1/mcp/servers/{name}` | Replace its config and reconnect |
+| `PATCH` | `/v1/mcp/servers/{name}` | Enable or disable it (`{"enabled": false}`) |
+| `DELETE` | `/v1/mcp/servers/{name}` | Disconnect and remove it |
+| `POST` | `/v1/mcp/servers/{name}/reconnect` | Drop the connection and open a fresh one |
+| `POST` | `/v1/mcp/test` | Try a config without saving it: tools found, or why it failed |
+| `POST` | `/v1/mcp/import` | Add servers from `{"mcpServers": {...}}` JSON (`overwrite` optional) |
 
 Every `/v1/files` endpoint also takes `?workspace=` to use a chosen directory.
 The `/v1/sessions` endpoints need a database (`501` otherwise).
@@ -309,6 +331,81 @@ A chosen directory must be absolute and already exist. Two settings bound it:
 
 Inside the chosen directory, the usual sandbox applies: nothing outside it can
 be reached.
+
+## MCP servers
+
+The runtime connects to any Model Context Protocol server and gives the agent
+its tools. Servers are managed in the web app (**Integrations → Manage**), over
+the `/v1/mcp` API, or by editing the config file.
+
+**Transports**
+
+| `type` | For | Fields |
+|---|---|---|
+| `stdio` | A local program: `npx`, `uvx`, `python`, a binary | `command`, `args`, `env`, `cwd` |
+| `http` | A remote server over streamable HTTP (the current standard) | `url`, `headers` |
+| `sse` | A remote server over the older HTTP + Server-Sent Events | `url`, `headers` |
+
+Remote servers authenticate with headers (e.g. `Authorization: Bearer
+<token>`). OAuth sign-in flows aren't supported; use a token.
+
+**The config file** is `MCP_CONFIG_PATH` (default `data/mcp.json`), in the
+format Claude Desktop, Cursor and VS Code use, plus two optional fields:
+`enabled` and `timeout_s` (seconds to wait for a server to start):
+
+```json
+{
+  "mcpServers": {
+    "playwright": { "command": "npx", "args": ["@playwright/mcp@latest", "--headless"] },
+    "jira": {
+      "command": "uvx",
+      "args": ["mcp-atlassian"],
+      "env": { "JIRA_URL": "https://acme.atlassian.net", "JIRA_USERNAME": "me@acme.com", "JIRA_API_TOKEN": "..." }
+    },
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": { "Authorization": "Bearer ghp_..." }
+    }
+  }
+}
+```
+
+`/v1/mcp/import` accepts that, VS Code's `{"servers": {...}}`, or a bare
+`{"name": {...}}` map, and understands other clients' field names
+(`transport`, `serverUrl`, `streamable-http`). The server name prefixes its
+tools, so it's limited to 1-32 letters, digits, `_` and `-`.
+
+**How it works**
+
+- **Connections.** `McpManager` keeps one live session per enabled server, each
+  owned by a background task. Startup never waits for them: a slow server
+  shows as `connecting`, a broken one as `error` with a readable reason (a
+  missing command, a refused token, an unreachable URL) plus the last lines it
+  printed to stderr. A dropped connection is noticed on the next call.
+- **Tools.** Each request gets the tools of the servers connected right now,
+  named `server__tool` (cleaned and shortened to fit OpenAI's 64-character
+  function names), with the server's own JSON schema. Arguments are checked
+  against that schema before the call, so the model gets instant feedback.
+- **Results.** Text becomes the observation. Images (e.g. Playwright
+  screenshots) are attached so the model sees them. Embedded resources and
+  structured content are included as text, and long results are truncated at
+  `READ_MAX_CHARS`. A result flagged `isError` becomes a recoverable tool error
+  the model can react to. Calls time out after `TOOL_TIMEOUT_S`.
+- **Secrets.** Env values and headers are masked (`••••••••`) in every API
+  response. Sending the mask back on an edit keeps the stored value.
+- **The CLI uses them too.** `chat` and `ask` connect the enabled servers
+  before the first message and report each one; `--no-mcp` skips them.
+
+**Who may change them.** Anyone who may use the API can list servers. Adding,
+editing, enabling, deleting, importing and testing (which starts the server)
+need an admin when sign-in is on, because a stdio server runs a program on this
+machine. `MCP_ALLOW_STDIO=false` permits only remote servers, and
+`MCP_ENABLED=false` turns the feature off (`/v1/mcp` answers `404`).
+
+**Runtimes.** A stdio server needs its launcher on the backend's machine:
+Node.js for `npx` servers, [uv](https://docs.astral.sh/uv/) for `uvx` servers.
+The Docker image includes both.
 
 ## Sessions and the activity log
 
@@ -440,7 +537,8 @@ environment or `.env`. See [.env.example](.env.example) for the full list:
 workspace (`WORKSPACE_DIR`, `WORKSPACE_READ_ONLY`, `WORKSPACE_SELECTABLE`,
 `WORKSPACE_BROWSE_ROOTS`, `MAX_FILE_BYTES`, `READ_MAX_CHARS`,
 `IMAGE_MAX_DIMENSION`), persistence (`DATABASE_URL`, `DATABASE_ECHO`),
-sign-in (`AUTH_ENABLED`, `AUTH_TOKEN_TTL_HOURS`), loop budget (`MAX_STEPS`,
+sign-in (`AUTH_ENABLED`, `AUTH_TOKEN_TTL_HOURS`), MCP (`MCP_ENABLED`,
+`MCP_CONFIG_PATH`, `MCP_ALLOW_STDIO`), loop budget (`MAX_STEPS`,
 `TOOL_TIMEOUT_S`, `RUN_TIMEOUT_S`, `MAX_PARALLEL_TOOL_CALLS`), sessions,
 server and the API key.
 
@@ -489,10 +587,16 @@ every document format is written and read back. Workspace escapes
 files API, image delivery to the model and token accounting are all tested
 deterministically. The database store, the activity log, history across a
 restart, sign-in, per-user isolation and throttling run against a temporary
-SQLite file, through the same code that serves PostgreSQL.
+SQLite file, through the same code that serves PostgreSQL. The MCP client runs
+against a real MCP server (`tests/mcp_echo_server.py`, built with the SDK's
+FastMCP) over both stdio and streamable HTTP: connecting, tools, images,
+errors, the API, permissions, and the agent calling an MCP tool in a chat.
+`tests/conftest.py` points `MCP_CONFIG_PATH` at a temporary file, so tests
+never touch your real servers.
 
 Run one server process. Without a database, conversations live in that
 process's memory. With one, history is shared, but two runs on the same
 session at once could interleave their transcript writes. For several
-workers, also point `WORKSPACE_DIR` at shared storage. As the schema stops
+workers, also point `WORKSPACE_DIR` at shared storage. (MCP connections
+also belong to the process.) As the schema stops
 being purely additive, adopt a migration tool such as Alembic.

@@ -17,6 +17,7 @@ from agent_runtime.auth import EVERYONE, Principal
 from agent_runtime.config import Settings
 from agent_runtime.files.directories import DirectoryPolicy, DirectorySelectionDisabled
 from agent_runtime.files.workspace import Workspace, WorkspaceError
+from agent_runtime.mcp_client import McpManager
 from agent_runtime.runtime import AgentFactory
 from agent_runtime.sessions import ConversationStore
 from agent_runtime.storage import DatabaseStore
@@ -80,12 +81,25 @@ def get_history_store(store: ConversationStore = Depends(get_session_store)) -> 
     return store
 
 
+def get_mcp(request: Request) -> McpManager | None:
+    """Return the MCP connection manager; None when MCP_ENABLED is off."""
+    return request.app.state.mcp  # type: ignore[no-any-return]
+
+
+def get_all_tools(
+    tools: ToolRegistry = Depends(get_tools), mcp: McpManager | None = Depends(get_mcp)
+) -> ToolRegistry:
+    """The built-in tools plus those of every connected MCP server."""
+    return ToolRegistry([*tools, *mcp.tools()]) if mcp is not None else tools
+
+
 def get_agent_factory(
     settings: Settings = Depends(get_settings),
     tools: ToolRegistry = Depends(get_tools),
+    mcp: McpManager | None = Depends(get_mcp),
 ) -> AgentFactory:
     """Return a factory for this request's agent loop (tests override this)."""
-    return AgentFactory(settings=settings, tools=tools)
+    return AgentFactory(settings=settings, tools=tools, mcp=mcp)
 
 
 def get_user_store(

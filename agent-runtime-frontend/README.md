@@ -24,6 +24,22 @@ What it does:
 - **Saved conversations** (`/v1/sessions`), listed in the sidebar to reopen,
   rename or delete. A reopened conversation is rebuilt by replaying its
   recorded events through the same reducer that rendered it live.
+- **MCP integrations** (`/v1/mcp`). An **Integrations** section in the sidebar
+  shows each MCP server's status and tool count. **Manage** opens the MCP
+  servers dialog:
+  - add from templates (GitHub, Playwright, Jira, Filesystem, Fetch, Memory)
+    or from scratch: local command (stdio), HTTP or SSE, with arguments, env
+    vars and headers
+  - **test the connection** before saving, and see the tools it found
+  - view, edit, enable or disable, reconnect, delete
+  - import the `mcpServers` JSON from Claude Desktop, Cursor or VS Code
+
+  Connected servers' tools join the tool list, grouped by server, and their
+  calls show as `server · tool` cards. Saved secrets are never sent back to the
+  browser. Non-admins can look but not change.
+
+  ![The MCP servers dialog](docs/mcp.png)
+
 - **Workspace picker.** Browse the server's folders and choose where the agent
   works. The choice is remembered, and reopening a conversation returns to its
   folder.
@@ -127,6 +143,8 @@ src/
     useAttachments.ts Uploads attached files into the workspace
   components/
     auth/             LoginPage (sign-in and first-run setup)
+    mcp/              McpPanel (sidebar), McpDialog, McpServerForm, McpServerDetail,
+                      McpImport, KeyValueEditor, useMcpServers (data and polling)
     brand/            Logo, OrbitVisual (login hero), Splash
     sidebar/          Sidebar, WorkspacePanel, DirectoryBrowser, SessionList,
                       ToolList, ToolItem, SettingsPanel
@@ -134,7 +152,7 @@ src/
     Icon.tsx          Inline SVG icons
   hooks/useResource.ts  Load-once data hook with cancellation and reload
   lib/                Formatting, storage, theme, tool icons, password strength,
-                      schema and tool-call helpers
+                      MCP templates and status labels, schema and tool-call helpers
   styles/global.css   Design tokens (dark and light) and base styles
   Root.tsx            The client, credentials, and what to show: splash, sign-in, or the app
   App.tsx             The two-column shell and app-wide state
@@ -173,6 +191,9 @@ Design notes:
 - **Sign-in** against a fake backend (`src/test/fakeServer.ts`): first-run
   setup, wrong passwords, signing out, an expired token, an unreachable
   server, and servers without sign-in.
+- **MCP management** (`src/Mcp.test.tsx`): adding from a template after a
+  test, form checks, disabling, editing env vars, deleting, importing JSON,
+  read-only access for non-admins, and new tools reaching the tool list.
 - **Integration tests of the whole app**: tools in the sidebar, streaming
   replies with tool cards and downloads, sessions, stop, attachments, choosing
   a folder, reopening and deleting conversations, errors and the offline state.

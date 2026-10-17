@@ -16,6 +16,11 @@ import {
   type DirectoryListing,
   type Health,
   type LoginResponse,
+  type McpImportResult,
+  type McpServer,
+  type McpServerConfig,
+  type McpServersResponse,
+  type McpTestResult,
   type ModelsResponse,
   type SessionDetail,
   type SessionsResponse,
@@ -118,10 +123,15 @@ export class ApiClient {
   }
 
   private async postJson<T>(path: string, body: unknown): Promise<T> {
+    return this.sendJson<T>('POST', path, body);
+  }
+
+  private async sendJson<T>(method: string, path: string, body?: unknown): Promise<T> {
     const response = await this.request(path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      method,
+      ...(body === undefined
+        ? {}
+        : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
     });
     return (await response.json()) as T;
   }
@@ -197,6 +207,43 @@ export class ApiClient {
 
   async deleteSession(id: string): Promise<void> {
     await this.request(`/v1/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  // --- MCP servers ---------------------------------------------------------------
+
+  mcpServers(signal?: AbortSignal): Promise<McpServersResponse> {
+    return this.getJson<McpServersResponse>('/v1/mcp/servers', signal);
+  }
+
+  createMcpServer(name: string, config: McpServerConfig): Promise<McpServer> {
+    return this.postJson<McpServer>('/v1/mcp/servers', { name, config });
+  }
+
+  updateMcpServer(name: string, config: McpServerConfig): Promise<McpServer> {
+    return this.sendJson<McpServer>('PUT', `/v1/mcp/servers/${encodeURIComponent(name)}`, config);
+  }
+
+  setMcpServerEnabled(name: string, enabled: boolean): Promise<McpServer> {
+    return this.sendJson<McpServer>('PATCH', `/v1/mcp/servers/${encodeURIComponent(name)}`, {
+      enabled,
+    });
+  }
+
+  reconnectMcpServer(name: string): Promise<McpServer> {
+    return this.postJson<McpServer>(`/v1/mcp/servers/${encodeURIComponent(name)}/reconnect`, {});
+  }
+
+  async deleteMcpServer(name: string): Promise<void> {
+    await this.request(`/v1/mcp/servers/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  }
+
+  /** Try a config without saving it; `name` fills masked secrets from a stored server. */
+  testMcpServer(config: McpServerConfig, name?: string): Promise<McpTestResult> {
+    return this.postJson<McpTestResult>('/v1/mcp/test', { config, ...(name ? { name } : {}) });
+  }
+
+  importMcpServers(json: string, overwrite = false): Promise<McpImportResult> {
+    return this.postJson<McpImportResult>('/v1/mcp/import', { json, overwrite });
   }
 
   /** The subfolders of server directory `path`, or the top-level locations if omitted. */

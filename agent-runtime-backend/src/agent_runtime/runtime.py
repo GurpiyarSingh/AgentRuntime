@@ -13,6 +13,7 @@ from agent_runtime.agent.protocols import ChatModel
 from agent_runtime.config import Settings
 from agent_runtime.files.directories import DirectoryPolicy
 from agent_runtime.files.workspace import Workspace
+from agent_runtime.mcp_client import McpConfigStore, McpManager
 from agent_runtime.tools.file_tools import default_tools
 from agent_runtime.tools.registry import ToolRegistry
 
@@ -26,6 +27,9 @@ Working with files:
 - Use write_file to create files; the extension decides the format (.docx, .pdf, .xlsx, .pptx, .md, .csv, .json, code, ...). Write complete content, never placeholders.
 - Do not overwrite an existing file unless the user asked for it to be replaced or changed.
 - Use edit_file for targeted changes to text and code files, and read the file first so old_text matches exactly.
+
+Integrations:
+- You may also have tools from connected services (MCP servers). Their names start with the service, e.g. github__create_issue, and their descriptions start with [service]. Use them when a request involves that service, and report what they returned.
 
 When you finish, tell the user plainly what you did, including the path of every file you created or changed. If a tool reports an error, explain it and what would fix it rather than pretending it worked. Answer directly, without tools, when the request does not involve files."""
 
@@ -43,6 +47,18 @@ def build_directory_policy(settings: Settings, workspace: Workspace) -> Director
     """Decide which other directories clients may point the agent at."""
     return DirectoryPolicy(
         workspace, selectable=settings.workspace_selectable, roots=settings.browse_roots
+    )
+
+
+def build_mcp_manager(settings: Settings) -> McpManager | None:
+    """The MCP connection manager, unless MCP_ENABLED is off."""
+    if not settings.mcp_enabled:
+        return None
+    return McpManager(
+        McpConfigStore(settings.mcp_config_path),
+        allow_stdio=settings.mcp_allow_stdio,
+        tool_timeout_s=settings.tool_timeout_s,
+        max_chars=settings.read_max_chars,
     )
 
 
@@ -70,10 +86,13 @@ class AgentFactory:
     rather than a finished loop.
     """
 
-    def __init__(self, settings: Settings, tools: ToolRegistry) -> None:
-        """Capture what every loop shares: settings and the tool registry."""
+    def __init__(
+        self, settings: Settings, tools: ToolRegistry, mcp: McpManager | None = None
+    ) -> None:
+        """Capture what every loop shares: settings, built-in tools, MCP servers."""
         self._settings = settings
         self._tools = tools
+        self._mcp = mcp
 
     def __call__(
         self,
@@ -93,6 +112,10 @@ class AgentFactory:
             ModelConfigurationError: No OpenAI API key is configured.
         """
         tools = self._tools if workspace is None else build_tools(self._settings, workspace)
+        if self._mcp is not None:
+            # The servers connected right now; a server that connects later
+            # is picked up by the next request.
+            tools = ToolRegistry([*tools, *self._mcp.tools()])
         return AgentLoop(
             settings=self._settings,
             tools=tools,
@@ -105,6 +128,7 @@ __all__ = [
     "SYSTEM_PROMPT",
     "AgentFactory",
     "build_directory_policy",
+    "build_mcp_manager",
     "build_tools",
     "build_workspace",
     "system_prompt",

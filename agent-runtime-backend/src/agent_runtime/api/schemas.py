@@ -11,11 +11,20 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+import mcp.types as mcp_types
+from pydantic import BaseModel, ConfigDict, Field
 
 from agent_runtime.agent.outcome import RunOutcome, ToolCallRecord
 from agent_runtime.auth import MIN_PASSWORD_LENGTH
 from agent_runtime.files.directories import DirectoryListing
+from agent_runtime.mcp_client import (
+    McpServerConfig,
+    McpTool,
+    ServerState,
+    TestResult,
+    qualified_name,
+)
+from agent_runtime.mcp_client.config import NAME_PATTERN
 from agent_runtime.models import ModelInfo
 from agent_runtime.storage.store import SessionDetail
 from agent_runtime.storage.tables import RunEventRow, RunRow, SessionRow, UserRow
@@ -182,15 +191,20 @@ class ToolView(BaseModel):
     name: str
     description: str
     parameters: dict[str, Any] = Field(description="JSON Schema of the tool's arguments.")
+    source: Literal["builtin", "mcp"] = "builtin"
+    server: str | None = Field(default=None, description="The MCP server it comes from.")
 
     @classmethod
     def from_tool(cls, tool: Tool) -> ToolView:
         """Describe `tool` from the same schema the model is given."""
         function = tool.to_openai_schema()["function"]
+        server = tool.server if isinstance(tool, McpTool) else None
         return cls(
             name=function["name"],
             description=function["description"],
             parameters=function["parameters"],
+            source="mcp" if server else "builtin",
+            server=server,
         )
 
 
@@ -258,6 +272,127 @@ class DirectoryListingView(BaseModel):
             directories=[DirectoryEntry.from_path(path) for path in listing.directories],
             truncated=listing.truncated,
         )
+
+
+# --- MCP servers -----------------------------------------------------------------
+
+
+class McpToolView(BaseModel):
+    """One tool an MCP server offers."""
+
+    name: str = Field(description="The tool's own name on the server.")
+    qualified_name: str = Field(description="The name the agent calls it by: server__tool.")
+    description: str
+    parameters: dict[str, Any]
+
+    @classmethod
+    def from_tool(cls, server: str, tool: mcp_types.Tool) -> McpToolView:
+        """Describe `tool` from `server`."""
+        return cls(
+            name=tool.name,
+            qualified_name=qualified_name(server, tool.name),
+            description=tool.description or tool.title or "",
+            parameters=tool.inputSchema or {},
+        )
+
+
+class McpServerView(BaseModel):
+    """A configured MCP server, its connection, and its tools. Secrets are masked."""
+
+    name: str
+    config: McpServerConfig
+    status: Literal["disabled", "connecting", "connected", "error"]
+    error: str | None = None
+    server_name: str | None = Field(default=None, description="What the server calls itself.")
+    server_version: str | None = None
+    connected_at: datetime | None = None
+    tools: list[McpToolView] = Field(default_factory=list)
+
+    @classmethod
+    def from_state(cls, state: ServerState) -> McpServerView:
+        """Describe a server as the manager sees it now."""
+        connection = state.connection
+        return cls(
+            name=state.name,
+            config=state.config.masked(),
+            status=state.status,
+            error=state.error,
+            server_name=connection.server_name if connection else None,
+            server_version=connection.server_version if connection else None,
+            connected_at=state.connected_at if connection else None,
+            tools=[McpToolView.from_tool(state.name, tool) for tool in state.tools],
+        )
+
+
+class McpServersResponse(BaseModel):
+    """Every configured MCP server, and what this caller may do with them."""
+
+    servers: list[McpServerView]
+    can_manage: bool = Field(description="False for signed-in non-admins: they can only look.")
+    allow_stdio: bool = Field(description="False when local (stdio) servers are turned off.")
+
+
+class McpServerCreate(BaseModel):
+    """A new server: its name (which prefixes its tools) and how to reach it."""
+
+    name: str = Field(..., pattern=NAME_PATTERN, description="1-32 letters, digits, _ or -.")
+    config: McpServerConfig
+
+
+class McpServerPatch(BaseModel):
+    """Turn a server on or off without touching the rest of its config."""
+
+    enabled: bool
+
+
+class McpTestRequest(BaseModel):
+    """A configuration to try, before or without saving it."""
+
+    config: McpServerConfig
+    name: str | None = Field(
+        default=None,
+        description="An existing server whose stored secrets fill in masked values.",
+    )
+
+
+class McpTestView(BaseModel):
+    """What a trial connection found."""
+
+    ok: bool
+    duration_s: float
+    error: str | None = None
+    server_name: str | None = None
+    server_version: str | None = None
+    tools: list[McpToolView] = Field(default_factory=list)
+
+    @classmethod
+    def from_result(cls, result: TestResult, name: str) -> McpTestView:
+        """Describe a trial connection, naming tools as server `name` would."""
+        return cls(
+            ok=result.ok,
+            duration_s=round(result.duration_s, 3),
+            error=result.error,
+            server_name=result.server_name,
+            server_version=result.server_version,
+            tools=[McpToolView.from_tool(name, tool) for tool in result.tools],
+        )
+
+
+class McpImportRequest(BaseModel):
+    """Pasted JSON, as Claude Desktop, Cursor or VS Code write it."""
+
+    json_text: str = Field(..., min_length=2, max_length=200_000, alias="json")
+    overwrite: bool = Field(default=False, description="Replace servers that already exist.")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class McpImportResponse(BaseModel):
+    """What an import did, by server name."""
+
+    added: list[str]
+    replaced: list[str]
+    skipped: list[str] = Field(description="Already existed, and overwrite was false.")
 
 
 # --- sign-in ---------------------------------------------------------------------
@@ -464,6 +599,7 @@ class HealthResponse(BaseModel):
     model: str
     tools: list[str]
     workspace: WorkspaceStatus
+    mcp: bool = Field(default=False, description="True when MCP servers can be managed.")
     history: bool = Field(
         default=False,
         description="True when sessions are stored in a database (listed at /v1/sessions).",

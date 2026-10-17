@@ -10,6 +10,8 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +21,7 @@ from agent_runtime import cli
 from agent_runtime.agent.loop import AgentLoop
 from agent_runtime.agent.messages import AssistantMessage, Message
 from agent_runtime.config import Settings
+from agent_runtime.mcp_client import McpConfigStore, McpServerConfig
 from agent_runtime.runtime import AgentFactory
 from agent_runtime.tools.base import Tool
 from agent_runtime.tools.registry import ToolRegistry
@@ -270,3 +273,46 @@ def test_users_add_needs_a_database(
     monkeypatch.chdir(Path(__file__).parent)  # No .env here.
     assert cli.main(["users", "list"]) == 2
     assert "DATABASE_URL" in capsys.readouterr().err
+
+
+# --- MCP servers -------------------------------------------------------------------
+
+
+def _configure_echo_server() -> None:
+    store = McpConfigStore(Path(os.environ["MCP_CONFIG_PATH"]))
+    echo = str(Path(__file__).parent / "mcp_echo_server.py")
+    asyncio.run(
+        store.put("echo", McpServerConfig(command=sys.executable, args=[echo], timeout_s=30))
+    )
+
+
+def test_ask_uses_mcp_tools(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _configure_echo_server()
+    script(
+        monkeypatch,
+        tool_call_turn("echo__echo", {"text": "hey", "times": 2}),
+        final_turn("The server said: hey hey"),
+    )
+
+    assert cli.main(["ask", "echo hey twice"]) == 0
+
+    out, err = capsys.readouterr()
+    assert "Connecting MCP servers: echo" in err
+    assert "[mcp] echo: 4 tools" in err
+    assert "echo__echo" in err  # The tool call was shown...
+    assert "The server said: hey hey" in out  # ...and the run finished.
+
+
+def test_no_mcp_skips_the_servers(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _configure_echo_server()
+    script(monkeypatch, final_turn("Plain answer."))
+
+    assert cli.main(["ask", "--no-mcp", "hello"]) == 0
+
+    out, err = capsys.readouterr()
+    assert "Connecting MCP servers" not in err
+    assert "Plain answer." in out

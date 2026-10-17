@@ -16,6 +16,7 @@ import { turnsFromSession } from './chat/history';
 import { useAttachments } from './chat/useAttachments';
 import { useChat } from './chat/useChat';
 import { ChatPanel } from './components/chat/ChatPanel';
+import { useMcpServers } from './components/mcp/useMcpServers';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { UPLOAD_FOLDER } from './config';
 import { useResource } from './hooks/useResource';
@@ -80,6 +81,11 @@ export function App({ apiKey, onApiKeyChange, user, onSignOut }: AppProps) {
     loadSessions,
     `${apiKey}|${user?.id ?? ''}|${String(chat.state.busy)}`,
   );
+  // MCP servers: any change, or a server finishing connecting, refreshes the
+  // tool list, so the sidebar shows what the agent can use right now.
+  const mcpEnabled = health.data?.mcp === true;
+  const mcp = useMcpServers(client, mcpEnabled, tools.reload);
+
   const title = sessions.data?.find((session) => session.id === chat.state.sessionId)?.title;
 
   const openSession = async (id: string) => {
@@ -147,6 +153,7 @@ export function App({ apiKey, onApiKeyChange, user, onSignOut }: AppProps) {
         user={user}
         onSignOut={onSignOut}
         sessions={sessions}
+        mcp={mcpEnabled ? mcp : undefined}
         activeSessionId={chat.state.sessionId}
         onOpenSession={openSession}
         onRenameSession={renameSession}

@@ -37,7 +37,11 @@ export function ToolItem({ tool, uses }: ToolItemProps) {
           <Icon name={meta.icon} size={15} />
         </span>
         <span className={styles.titles}>
-          <span className={styles.name}>{tool.name}</span>
+          <span className={styles.name}>
+            {tool.source === 'mcp' && tool.server
+              ? tool.name.slice(tool.server.length + 2)
+              : tool.name}
+          </span>
           <span className={styles.summary}>{firstSentence(tool.description)}</span>
         </span>
         {uses > 0 && (

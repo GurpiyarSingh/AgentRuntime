@@ -14,13 +14,19 @@ from agent_runtime import __version__
 from agent_runtime.api.auth import router as auth_router
 from agent_runtime.api.directories import router as directories_router
 from agent_runtime.api.files import router as files_router
+from agent_runtime.api.mcp import router as mcp_router
 from agent_runtime.api.routes import router
 from agent_runtime.api.schemas import ErrorResponse
 from agent_runtime.api.sessions import router as sessions_router
 from agent_runtime.auth import LoginThrottle
 from agent_runtime.config import Settings, get_settings
 from agent_runtime.logging import configure_logging
-from agent_runtime.runtime import build_directory_policy, build_tools, build_workspace
+from agent_runtime.runtime import (
+    build_directory_policy,
+    build_mcp_manager,
+    build_tools,
+    build_workspace,
+)
 from agent_runtime.sessions import ConversationStore, SessionStore
 from agent_runtime.storage import DatabaseStore, create_database_store
 
@@ -57,12 +63,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "tools": ",".join(app.state.tools.names()),
             },
         )
+        if app.state.mcp is not None:
+            await app.state.mcp.start()  # Connects in the background.
         if isinstance(app.state.sessions, DatabaseStore):
             # Fail at startup, not on the first chat, if the database is unreachable.
             await app.state.sessions.create_schema()
             await app.state.sessions.users.purge_expired_tokens()
             logger.info("sessions are stored in the database")
         yield
+        if app.state.mcp is not None:
+            await app.state.mcp.close()
         if isinstance(app.state.sessions, DatabaseStore):
             await app.state.sessions.close()
         logger.info("shutting down %s", settings.app_name)
@@ -83,6 +93,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.tools = build_tools(settings, app.state.workspace)
     app.state.sessions = build_session_store(settings)
     app.state.login_throttle = LoginThrottle()
+    app.state.mcp = build_mcp_manager(settings)
 
     # Auth is a header (X-API-Key), never a cookie, so browsers never need
     # to send credentials. Allowing them alongside a wildcard origin would
@@ -109,4 +120,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(directories_router)
     app.include_router(sessions_router)
     app.include_router(auth_router)
+    app.include_router(mcp_router)
     return app

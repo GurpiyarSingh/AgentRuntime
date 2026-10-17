@@ -35,6 +35,9 @@ services:
     volumes:
       # Uploads and every file the agent creates; survives `down` and rebuilds.
       - workspace:/data/workspace
+      # MCP servers added in the web app (and their tokens); kept outside
+      # /data so the agent can never read it.
+      - config:/config
       # The web app's folder picker browses /data inside the container, not
       # this machine. To let the agent work in your own folders, mount them
       # under /data, e.g.:
@@ -60,5 +63,15 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Optional: a browser for the agent, through Playwright's MCP server.
+  # Browsers are too heavy for the backend image, so Playwright runs in its
+  # own. Uncomment, `docker compose up -d`, then in the web app add an MCP
+  # server of type HTTP with the URL http://playwright:8931/mcp
+  # playwright:
+  #   image: mcr.microsoft.com/playwright/mcp
+  #   command: ["--headless", "--port", "8931", "--host", "0.0.0.0"]
+  #   restart: unless-stopped
+
 volumes:
   workspace:
+  config:

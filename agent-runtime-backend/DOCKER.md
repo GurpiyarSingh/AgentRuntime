@@ -18,6 +18,8 @@ The [Dockerfile](Dockerfile) builds a small production image:
 - **Python 3.13 (slim)** with the backend and its dependencies installed into
   a virtualenv. No compiler, pip cache or source code ships in the final image.
 - **DejaVu fonts**, so PDFs the agent creates can contain any language.
+- **Node.js (`npx`) and uv (`uvx`)**, so most local MCP servers run inside the
+  container.
 - **Runs as an unprivileged user** (`agent`, uid 10001), not root.
 - **Starts the HTTP API** on port **8000**, with the agent's workspace at
   **`/data/workspace`** inside the container.
@@ -96,7 +98,7 @@ docker image ls agent-runtime-backend
 ## 4. Run the container
 
 ```powershell
-docker run -d --name agent-backend -p 127.0.0.1:8000:8000 --env-file .env -v agent-workspace:/data/workspace --restart unless-stopped agent-runtime-backend
+docker run -d --name agent-backend -p 127.0.0.1:8000:8000 --env-file .env -v agent-workspace:/data/workspace -v agent-config:/config --restart unless-stopped agent-runtime-backend
 ```
 
 What each part does:
@@ -108,6 +110,7 @@ What each part does:
 | `-p 127.0.0.1:8000:8000` | Make the API available at `http://localhost:8000`, **on this computer only** |
 | `--env-file .env` | Load your settings, including the OpenAI key |
 | `-v agent-workspace:/data/workspace` | Keep the workspace in a Docker volume named `agent-workspace`, so files survive restarts and rebuilds |
+| `-v agent-config:/config` | Keep the MCP servers you add in the web app (and their tokens) in a volume named `agent-config` |
 | `--restart unless-stopped` | Start again automatically after a reboot or a crash |
 | `agent-runtime-backend` | The image built in step 3 |
 
@@ -161,6 +164,29 @@ For a single question:
 ```powershell
 docker exec agent-backend agent-runtime ask --workspace /data/workspace "What files are in the workspace?"
 ```
+
+### MCP servers in Docker
+
+MCP servers added in the web app are saved in **`/config/mcp.json`** inside the
+container. Mount a volume there (`-v agent-config:/config`, as in step 4, or
+the `config` volume in Compose), or they're lost with the container. It is
+outside `/data` on purpose: the folder picker, and so the agent, can never
+read the tokens stored in it.
+
+What runs where:
+
+- **`npx` and `uvx` servers run inside the container.** The image includes
+  Node.js and uv, so templates like GitHub's tools, Filesystem, Memory, Fetch
+  and Jira (mcp-atlassian) work as they are. Their first start downloads the
+  package, so it can take a minute.
+- **A browser (Playwright) runs best in its own container.** Browsers are too
+  heavy for this image. `docker-compose.yml` has a commented `playwright`
+  service; uncomment it, then add an MCP server of type **HTTP** with the URL
+  `http://playwright:8931/mcp`.
+- **Servers on your own computer** are reachable at
+  `http://host.docker.internal:PORT/mcp`.
+- **A Filesystem server only sees the container's disk.** Mount the folders it
+  should use under `/data`, and point it at those paths.
 
 ### Manage web app accounts
 
@@ -239,6 +265,7 @@ The ones you're most likely to want:
 | `LOG_JSON` | `true` | `false` for human-readable logs |
 | `CORS_ALLOW_ORIGINS` | `*` | Only matters if a browser app on another origin calls the API directly |
 | `DATABASE_URL` | (none) | Store sessions and every run's activity in PostgreSQL. See [Storing sessions in PostgreSQL](#storing-sessions-in-postgresql) |
+| `MCP_ALLOW_STDIO` | `true` | `false` allows only remote (HTTP/SSE) MCP servers. See [MCP servers in Docker](#mcp-servers-in-docker) |
 | `AUTH_ENABLED` | `true` | With `DATABASE_URL`, the web app requires sign-in. Add accounts with `docker compose exec backend agent-runtime users add NAME` |
 | `WORKSPACE_BROWSE_ROOTS` | `/data` | Folders the web app's folder picker may open. Mount your own folders under `/data` to make them choosable |
 
@@ -297,7 +324,7 @@ are created when the container starts.
 ```powershell
 docker build -t agent-runtime-backend .
 docker rm -f agent-backend
-docker run -d --name agent-backend -p 127.0.0.1:8000:8000 --env-file .env -v agent-workspace:/data/workspace --restart unless-stopped agent-runtime-backend
+docker run -d --name agent-backend -p 127.0.0.1:8000:8000 --env-file .env -v agent-workspace:/data/workspace -v agent-config:/config --restart unless-stopped agent-runtime-backend
 ```
 
 ### Stopping and removing

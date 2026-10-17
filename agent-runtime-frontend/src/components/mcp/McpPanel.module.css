@@ -1,0 +1,135 @@
+.panel {
+  padding: 8px 0 4px;
+}
+
+.heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  padding: 0 8px;
+  font-size: 0.7rem;
+  font-weight: 650;
+  color: var(--text-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.heading svg {
+  color: var(--tone-cyan);
+}
+
+.count {
+  padding: 0 7px;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  letter-spacing: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.manage {
+  margin-left: auto;
+  padding: 2px 9px;
+  font-size: 0.7rem;
+  font-weight: 650;
+  color: var(--accent);
+  text-transform: none;
+  letter-spacing: 0;
+  background: var(--accent-soft);
+  border: none;
+  border-radius: 999px;
+}
+
+.manage:hover {
+  color: var(--accent-contrast);
+  background: var(--accent);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 6px 10px;
+  color: var(--text);
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.row:hover {
+  background: var(--surface);
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  color: var(--text-subtle);
+}
+
+.cta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 10px;
+  color: var(--text);
+  text-align: left;
+  background: var(--surface);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+}
+
+.cta:hover {
+  border-color: var(--accent);
+  box-shadow: var(--glow);
+}
+
+.ctaIcon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  color: #fff;
+  background: var(--gradient-brand);
+  border-radius: 10px;
+}
+
+.ctaTitle,
+.ctaText {
+  display: block;
+}
+
+.ctaTitle {
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.ctaText {
+  font-size: 0.74rem;
+  color: var(--text-subtle);
+}

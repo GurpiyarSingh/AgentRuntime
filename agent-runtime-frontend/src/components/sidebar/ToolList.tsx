@@ -2,6 +2,7 @@
 
 import type { Tool } from '../../api/types';
 import type { Resource } from '../../hooks/useResource';
+import { Icon } from '../Icon';
 import { ToolItem } from './ToolItem';
 import styles from './ToolList.module.css';
 
@@ -41,11 +42,47 @@ export function ToolList({ tools, usage }: ToolListProps) {
   const list = tools.data ?? [];
   if (list.length === 0) return <p className={styles.empty}>No tools are enabled.</p>;
 
+  // Built-in tools first, then each MCP server's, under its name.
+  const groups = new Map<string, Tool[]>();
+  for (const tool of list) {
+    const key = tool.source === 'mcp' && tool.server ? tool.server : '';
+    groups.set(key, [...(groups.get(key) ?? []), tool]);
+  }
+  const keys = [...groups.keys()].sort((a, b) =>
+    a === '' ? -1 : b === '' ? 1 : a.localeCompare(b),
+  );
+
+  if (keys.length === 1 && keys[0] === '') {
+    return (
+      <ul className={styles.list}>
+        {list.map((tool) => (
+          <ToolItem key={tool.name} tool={tool} uses={usage.get(tool.name) ?? 0} />
+        ))}
+      </ul>
+    );
+  }
   return (
-    <ul className={styles.list}>
-      {list.map((tool) => (
-        <ToolItem key={tool.name} tool={tool} uses={usage.get(tool.name) ?? 0} />
+    <div className={styles.groups}>
+      {keys.map((key) => (
+        <div key={key || 'builtin'}>
+          <h3 className={styles.groupTitle} data-builtin={key === '' ? true : undefined}>
+            {key ? (
+              <>
+                <Icon name="plug" size={12} />
+                {key}
+              </>
+            ) : (
+              'Built-in'
+            )}
+            <span className={styles.groupCount}>{groups.get(key)?.length}</span>
+          </h3>
+          <ul className={styles.list}>
+            {(groups.get(key) ?? []).map((tool) => (
+              <ToolItem key={tool.name} tool={tool} uses={usage.get(tool.name) ?? 0} />
+            ))}
+          </ul>
+        </div>
       ))}
-    </ul>
+    </div>
   );
 }

@@ -54,6 +54,11 @@ const PATHS = {
   chat: 'M20.5 12a8.5 8.5 0 0 1-12.4 7.6L3.5 21l1.4-4.6A8.5 8.5 0 1 1 20.5 12z',
   terminal: 'M4 5h16v14H4zM7.5 9.5l3 2.5-3 2.5M12.5 15h4',
   activity: 'M3 12h4l3-8 4 16 3-8h4',
+  plug: 'M9 2.5v5M15 2.5v5M6 7.5h12v3.5a6 6 0 0 1-12 0zM12 17v4.5',
+  refresh: 'M20 11a8 8 0 0 0-14.6-4.5M4 4v4h4M4 13a8 8 0 0 0 14.6 4.5M20 20v-4h-4',
+  beaker: 'M9 3h6M10 3v6.5L5.2 18a2 2 0 0 0 1.7 3h10.2a2 2 0 0 0 1.7-3L14 9.5V3M7.6 14.5h8.8',
+  upload: 'M12 20V9M7 14l5-5 5 5M5 4h14',
+  server: 'M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01',
 } as const;
 
 export type IconName = keyof typeof PATHS;

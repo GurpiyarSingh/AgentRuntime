@@ -24,6 +24,8 @@ dependencies = [
     # Persistent sessions and run activity (when DATABASE_URL is set).
     "sqlalchemy[asyncio]>=2.0.36",
     "asyncpg>=0.30",
+    # MCP client: connect Model Context Protocol servers (stdio, HTTP, SSE).
+    "mcp>=1.12,<2",
     # File formats the default tools read and write.
     "pillow>=11.0",
     "pypdf>=5.0",

@@ -68,3 +68,39 @@
   font-size: 0.82rem;
   color: var(--text-subtle);
 }
+
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.groupTitle {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 4px 0 2px;
+  padding: 0 8px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.groupTitle svg {
+  color: var(--tone-cyan);
+}
+
+.groupCount {
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--text-subtle);
+}
+
+.groupTitle[data-builtin='true'] {
+  font-family: var(--font-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.66rem;
+}

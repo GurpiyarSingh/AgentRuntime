@@ -11,8 +11,8 @@ The repository has two parts:
 
 | Folder | What it is | Built with |
 |---|---|---|
-| [`agent-runtime-backend/`](agent-runtime-backend) | The agent itself: the reasoning loop, the file tools, accounts and saved conversations, a command-line interface and an HTTP API | Python 3.11+, FastAPI, LangChain, OpenAI, SQLAlchemy |
-| [`agent-runtime-frontend/`](agent-runtime-frontend) | A web app: sign-in, a chat that streams every step the agent takes, saved conversations, a folder picker and a tools sidebar | React 19, TypeScript, Vite |
+| [`agent-runtime-backend/`](agent-runtime-backend) | The agent itself: the reasoning loop, the file tools, an MCP client, accounts and saved conversations, a command-line interface and an HTTP API | Python 3.11+, FastAPI, LangChain, OpenAI, MCP SDK, SQLAlchemy |
+| [`agent-runtime-frontend/`](agent-runtime-frontend) | A web app: sign-in, a chat that streams every step the agent takes, saved conversations, MCP integrations, a folder picker and a tools sidebar | React 19, TypeScript, Vite |
 
 The backend works on its own (from the terminal, or as an API for your own
 apps). The frontend is an optional web interface on top of it.
@@ -36,6 +36,28 @@ Every tool is confined to one **workspace** folder. By default that's
 `data/workspace`, and in the web app you can **browse for any other folder**
 on the server to work in. Paths that try to leave the chosen folder are
 refused, whether they use `..`, absolute paths or symlinks.
+
+### Connect any MCP server
+
+The runtime is also a **universal [MCP](https://modelcontextprotocol.io) client**.
+Connect any Model Context Protocol server (GitHub, Jira, Playwright, a
+database, or one of thousands more) and its tools join the agent's toolbox
+the moment it connects:
+
+- **Any transport:** local programs (`npx`, `uvx`, `python`, … over stdio),
+  remote servers over **streamable HTTP**, or the older **SSE**.
+- **Managed in the web app:** add (from templates for GitHub, Playwright, Jira,
+  Filesystem, Fetch, Memory, or from scratch), **test the connection**, view
+  each server's tools and status, edit, enable or disable, and delete.
+- **Paste existing configs:** import the `mcpServers` JSON from Claude Desktop,
+  Cursor or VS Code as is.
+- **Visible like any other tool:** MCP tools are listed per server in the
+  sidebar, and their calls appear in the chat as cards. Images they return
+  (e.g. Playwright screenshots) are shown to the model.
+
+![Adding an MCP server](agent-runtime-frontend/docs/mcp.png)
+
+### With a database
 
 With a database (PostgreSQL) configured, the runtime also:
 
@@ -69,10 +91,13 @@ With a database (PostgreSQL) configured, the runtime also:
   │  (optional)      │   │  think → act → observe│ ◀────────────── │  GPT-4o /  │
   │  accounts,       │   └───────────┬───────────┘                 │  GPT-5.2   │
   │  conversations,  │               │ tool calls                  └────────────┘
-  │  activity log    │               ▼
-  └──────────────────┘   ┌───────────────────────┐
-                         │  File tools           │ ───▶  the chosen workspace folder
-                         └───────────────────────┘       (the only place it can touch)
+  │  activity log    │       ┌───────┴──────────────────┐
+  └──────────────────┘       ▼                          ▼
+           ┌───────────────────────┐   ┌───────────────────────┐
+           │  File tools           │   │  MCP client           │ ───▶ MCP servers: GitHub,
+           └──────────┬────────────┘   │  stdio · HTTP · SSE   │      Jira, Playwright, …
+                      ▼                └───────────────────────┘
+           the chosen workspace folder (the only place they can touch)
 ```
 
 The CLI and the API share the same agent loop and tools, so they behave the
@@ -144,6 +169,11 @@ npm run dev                          # web app on http://localhost:5173
 Open **http://localhost:5173**. In development, the web app forwards its API
 calls to the backend, so no CORS setup is needed.
 
+To connect MCP servers, click **Manage** next to **Integrations** in the left
+panel. Local servers need their launcher on the machine running the backend:
+**Node.js** for `npx` servers, and **[uv](https://docs.astral.sh/uv/)** for
+`uvx` servers.
+
 ![The sign-in page](agent-runtime-frontend/docs/login.png)
 
 ---
@@ -159,7 +189,10 @@ docker compose up --build -d      # build and start the API and the web app
 ```
 
 Then open **http://localhost:8080**. Stop with `docker compose down`; the
-workspace files are kept in a Docker volume.
+workspace files and your MCP servers are kept in Docker volumes. The backend
+image includes Node.js (`npx`) and uv (`uvx`), so most local MCP servers run
+inside it; `docker-compose.yml` has a ready-to-uncomment Playwright browser
+service for browsing.
 
 To save conversations in a PostgreSQL server on your computer, create a `.env`
 file **next to `docker-compose.yml`** (it's git-ignored). Inside a container,
@@ -194,6 +227,8 @@ Main API endpoints:
 | `POST /v1/chat` · `POST /v1/chat/stream` | Run the agent (whole answer, or streamed events), optionally in a chosen folder |
 | `GET /v1/sessions` · `GET`/`PATCH`/`DELETE /v1/sessions/{id}` | Saved conversations, with every recorded step |
 | `POST /v1/auth/login` · `/setup` · `/logout` · `GET /v1/auth/me` | Sign-in |
+| `GET`/`POST /v1/mcp/servers` · `PUT`/`PATCH`/`DELETE /v1/mcp/servers/{name}` | MCP servers: list with status and tools, add, edit, enable/disable, remove |
+| `POST /v1/mcp/test` · `/v1/mcp/import` · `/v1/mcp/servers/{name}/reconnect` | Try a config, import Claude/VS Code JSON, reconnect |
 | `GET /v1/directories` | Browse the server's folders, to choose a workspace |
 | `POST /v1/files` · `GET`/`DELETE /v1/files/{path}` | Upload, download and delete workspace files |
 | `GET /v1/tools` · `GET /v1/models` · `GET /health` | What it can do, models and prices, status |
@@ -234,7 +269,7 @@ npm run build          # production build into dist/
 |---|---|---|
 | Language | Python 3.11+, mypy strict | TypeScript 6, strict |
 | Lint / format | ruff (incl. docstring and security rules) | ESLint (type-checked) / Prettier |
-| Tests | pytest: loop, tools, every file format, API, CLI, database, sign-in | Vitest + Testing Library: SSE parser, state, API client, history replay, sign-in, full-app integration |
+| Tests | pytest: loop, tools, every file format, API, CLI, database, sign-in, MCP over stdio and HTTP against a real test server | Vitest + Testing Library: SSE parser, state, API client, history replay, sign-in, MCP management, full-app integration |
 
 ---
 
@@ -243,8 +278,8 @@ npm run build          # production build into dist/
 - **Backend:** environment variables, or `agent-runtime-backend/.env`. See
   [`.env.example`](agent-runtime-backend/.env.example) for the full list:
   model and prices, workspace folder, folder picker and read-only mode,
-  database and sign-in, file size limits, step and time budgets, API key, and
-  CORS.
+  database and sign-in, MCP servers, file size limits, step and time budgets,
+  API key, and CORS.
 - **Frontend:** `VITE_API_BASE_URL` and `VITE_PROXY_TARGET`. See
   [`.env.example`](agent-runtime-frontend/.env.example). It needs no
   configuration when it runs next to the backend.
@@ -265,7 +300,13 @@ npm run build          # production build into dist/
   machine.** Otherwise anyone who can reach the server can read, upload and
   delete workspace files. Use HTTPS whenever passwords or keys travel over a
   network.
-- **Files the agent reads are sent to OpenAI** for processing.
+- **A local (stdio) MCP server runs a program on the backend's machine.** With
+  sign-in, only admins can add, change or test MCP servers. On a shared server,
+  set `MCP_ALLOW_STDIO=false` to allow only remote (HTTP/SSE) servers. Tokens
+  you give MCP servers are stored in `MCP_CONFIG_PATH` and never sent back to
+  the browser.
+- **Files the agent reads, and what MCP tools return, are sent to OpenAI** for
+  processing.
 
 For production deployment, see the Docker guides above, or the
 [Frontend README](agent-runtime-frontend/README.md#deploying) for serving the

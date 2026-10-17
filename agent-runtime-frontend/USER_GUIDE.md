@@ -128,6 +128,7 @@ password and click **Sign in**. Usernames ignore upper and lower case. Click the
 | **Status**             | Top left         | A green dot next to **Connected** means the service is running.                                                      |
 | **Workspace**          | Left, at the top | The folder the assistant works in. **Browse…** picks another.                                                        |
 | **Conversations**      | Left             | Your past conversations, newest first. Shown when the service has a database.                                        |
+| **Integrations**       | Left             | Connected services (MCP servers) and their status. **Manage** adds and changes them.                                 |
 | **Tools**              | Left             | Everything the assistant can do. Click one for details.                                                              |
 | **You**                | Bottom left      | Your name, the **theme** switch (computer, sun, moon), and **sign out**. In Local mode, **Settings** for an API key. |
 | **Conversation title** | Top of the chat  | The conversation's name. A **Working** badge appears while the assistant is busy.                                    |
@@ -272,10 +273,85 @@ A new conversation is named after the first line of your first message.
 
 ---
 
+## Integrations (MCP servers)
+
+The assistant can use tools from other services too: **GitHub** (issues, pull
+requests, code), **Jira** and **Confluence**, a real **web browser**
+(Playwright), your **files** elsewhere, and thousands more. Each comes from an
+**MCP server**: a small program or online service that offers tools in a
+standard way (MCP is the Model Context Protocol).
+
+Connected servers are listed under **Integrations** on the left, each with a
+coloured dot:
+
+- **Green**: connected, with how many tools it offers.
+- **Amber**: starting. A first start can take a minute while it downloads.
+- **Red**: not connected. Open it to see why.
+- **Grey**: switched off.
+
+As soon as a server connects, its tools appear in the **Tools** list under the
+server's name, and the assistant can use them. In a reply, their steps show as
+cards such as **github · create_issue**, with a plug icon.
+
+![Adding an MCP server](docs/mcp.png)
+
+### Add a server
+
+1. Click **Manage** next to **Integrations** (or **Connect an MCP server** if
+   there are none yet), then **New server**.
+2. **Pick a template**: GitHub, Playwright, Jira & Confluence, Filesystem,
+   Fetch or Memory. It fills everything in and tells you what's needed, such as
+   a token. Or fill the form in yourself:
+   - **Name**: a short name like `github`. The server's tools are named after
+     it (`github__create_issue`).
+   - **Connection**:
+     - **Local command** runs a program on the computer with the assistant
+       service, e.g. `npx` with arguments `-y` and
+       `@modelcontextprotocol/server-memory`, one per line. Put API keys under
+       **Environment variables**.
+     - **HTTP** connects to a server on the internet by its address, e.g.
+       `https://api.githubcopilot.com/mcp/`. Put your token under **Headers**
+       as `Authorization` = `Bearer <your token>`.
+     - **SSE** is for older servers whose address usually ends in `/sse`.
+3. Replace anything in angle brackets, like `<token>`, with your own details.
+4. Click **Test connection**. A green box lists the tools it found; a red one
+   says what went wrong, including what the server itself printed.
+5. Click **Add server**. It connects straight away.
+
+> Templates that run `npx` need **Node.js** on the computer running the
+> assistant service, and those that run `uvx` need **uv**. Servers reached by
+> address need neither.
+
+### Import from Claude Desktop, Cursor or VS Code
+
+Already have servers set up in another app? Click **Import**, paste its MCP
+configuration (the JSON with `"mcpServers"`), and click **Import servers**.
+Servers whose names already exist are skipped unless you tick **Replace
+servers that already exist**.
+
+### View, change, pause or remove a server
+
+Click a server to see its status, how it connects, and every tool it offers.
+
+- **Enabled** switch: turn a server off without deleting it, and back on. (The
+  switches in the list do the same.)
+- **Reconnect**: start a fresh connection, e.g. after the server restarted.
+- **Edit**: change anything except the name. Saved secrets show as `••••••••`;
+  leave them as they are to keep them, or type a new value.
+- **Bin**: delete the server, after a confirmation.
+
+> **Only admins can change servers** when the service has sign-in. Everyone
+> else can see them and use their tools.
+
+---
+
 ## The tools panel
 
 The left panel lists the assistant's tools, each with its icon. Click one to
 see what it does and what information it needs.
+
+The built-in tools are listed first, then each connected MCP server's tools
+under its name.
 
 | Tool           | In plain words                                                  |
 | -------------- | --------------------------------------------------------------- |
@@ -349,6 +425,9 @@ to close it. The sign-in page shows its picture as a banner above the form.
   service restarts.
 - Your sign-in, theme, model and folder choices are remembered **only in this
   browser**.
+- **MCP servers see what the assistant sends them.** Only connect services you
+  trust, and give tokens only the access the assistant needs. Saved tokens stay
+  on the assistant service and are never shown in the browser again.
 
 ---
 
@@ -372,6 +451,10 @@ to close it. The sign-in page shows its picture as a banner above the form.
 | The model menu says **Loading models…** for a long time                          | The service isn't reachable. See the first row.                                                                                                                                                                     |
 | The reply says it **did not finish within 8 steps**                              | The task was too big for one go. Ask for it in smaller pieces.                                                                                                                                                      |
 | **The connection closed before the agent finished**                              | The service stopped or restarted mid-answer. Check Terminal 1, then send your message again.                                                                                                                        |
+| An MCP server shows **Couldn't start 'npx'** (or `'uvx'`)                        | That helper isn't installed on the computer running the assistant service. Install Node.js (for `npx`) or uv (for `uvx`), then restart the service and click **Reconnect**.                                         |
+| An MCP server shows **The server answered HTTP 401**                             | The token is wrong or has expired. Click **Edit**, paste a new token under **Headers**, and save.                                                                                                                   |
+| An MCP server shows **didn't answer within … s**                                 | A first start may still be downloading. Click **Edit**, open **Advanced**, raise the start-up timeout, and save.                                                                                                    |
+| An MCP server's tools don't appear                                               | Check its dot under **Integrations**: it must be green. A server that's switched off (grey) offers no tools.                                                                                                        |
 | An error mentioning OpenAI **quota** or **billing**                              | Add credit or check your limits at [platform.openai.com](https://platform.openai.com/).                                                                                                                             |
 
 Still stuck? The [backend User Guide](../agent-runtime-backend/USER_GUIDE.md#troubleshooting)
@@ -395,4 +478,6 @@ In the app:
   Card              click to see the step's details
   Download          save a file the assistant created
   Bottom left       theme (computer / sun / moon) and sign out
+  Integrations      Manage -> New server (template, Test connection, Add server),
+                    Import JSON, switch on/off, Reconnect, Edit, delete
 ```

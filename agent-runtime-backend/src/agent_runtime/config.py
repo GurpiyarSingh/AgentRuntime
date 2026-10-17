@@ -74,6 +74,16 @@ class Settings(BaseSettings):
     # Images are scaled to fit this many pixels on their longest side.
     image_max_dimension: int = Field(default=2048, ge=256, le=8192)
 
+    # --- MCP servers -------------------------------------------------------
+    # Connect Model Context Protocol servers (GitHub, Jira, Playwright, ...)
+    # and give their tools to the agent. Managed from the web app or the
+    # /v1/mcp API; stored in MCP_CONFIG_PATH (Claude Desktop's format).
+    mcp_enabled: bool = True
+    mcp_config_path: Path = Path("data/mcp.json")
+    # Local (stdio) servers run a program on this machine. Turn them off on
+    # a shared server where non-admins could otherwise add one.
+    mcp_allow_stdio: bool = True
+
     # --- Agent loop budget ---------------------------------------------------
     max_steps: int = Field(default=8, ge=1, le=50)
     tool_timeout_s: float = Field(default=60.0, gt=0)

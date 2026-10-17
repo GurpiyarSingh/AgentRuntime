@@ -50,8 +50,9 @@ from agent_runtime.api.schemas import ChatResponse
 from agent_runtime.auth import MIN_PASSWORD_LENGTH
 from agent_runtime.config import Settings
 from agent_runtime.logging import configure_logging
+from agent_runtime.mcp_client import McpConfigError, McpManager
 from agent_runtime.models import UnknownModelError, available_models, pricing_for
-from agent_runtime.runtime import AgentFactory, build_tools, build_workspace
+from agent_runtime.runtime import AgentFactory, build_mcp_manager, build_tools, build_workspace
 from agent_runtime.storage import DatabaseStore, create_database_store
 from agent_runtime.storage.users import UsernameTaken
 
@@ -95,13 +96,50 @@ def _load_settings(args: argparse.Namespace) -> Settings:
         raise CliError(f"invalid configuration:\n{exc}") from exc
 
 
-def _build_agent(settings: Settings, model: str | None) -> AgentLoop:
+def _build_agent(settings: Settings, model: str | None, mcp: McpManager | None = None) -> AgentLoop:
     """Build the agent exactly as the API does, turning setup problems into `CliError`."""
     tools = build_tools(settings, build_workspace(settings))
     try:
-        return AgentFactory(settings, tools)(model)
+        return AgentFactory(settings, tools, mcp=mcp)(model)
     except (UnknownModelError, ModelConfigurationError) as exc:
         raise CliError(str(exc)) from exc
+
+
+async def _connect_mcp(settings: Settings, args: argparse.Namespace) -> McpManager | None:
+    """Connect every enabled MCP server (the web app's Integrations), and say how it went.
+
+    Waits for each server to connect or fail, so the first message already
+    has their tools. `--no-mcp` skips this.
+    """
+    if getattr(args, "no_mcp", False):
+        return None
+    manager = build_mcp_manager(settings)
+    if manager is None:
+        return None
+    try:
+        configs = {name: c for name, c in manager.store.load().items() if c.enabled}
+    except McpConfigError as exc:
+        sys.stderr.write(f"MCP servers not loaded: {exc}\n")
+        return None
+    if not configs:
+        return manager
+    quiet = getattr(args, "quiet", False)
+    if not quiet:
+        sys.stderr.write(f"Connecting MCP servers: {', '.join(configs)}...\n")
+    await manager.start()
+    await asyncio.gather(
+        *(manager.wait_settled(name, config.timeout_s + 5) for name, config in configs.items())
+    )
+    if not quiet:
+        for state in manager.states():
+            if not state.config.enabled:
+                continue
+            if state.status == "connected":
+                sys.stderr.write(f"  [mcp] {state.name}: {len(state.tools)} tools\n")
+            else:
+                reason = (state.error or state.status).splitlines()[0]
+                sys.stderr.write(f"  [mcp] {state.name}: {reason}\n")
+    return manager
 
 
 def _configure_cli_logging(verbosity: int) -> None:
@@ -204,7 +242,15 @@ def _read_message(words: list[str]) -> str:
 async def _ask(args: argparse.Namespace) -> int:
     message = _read_message(args.message)
     settings = _load_settings(args)
-    agent = _build_agent(settings, args.model)
+    mcp = await _connect_mcp(settings, args)
+    try:
+        return await _ask_with(args, message, _build_agent(settings, args.model, mcp))
+    finally:
+        if mcp is not None:
+            await mcp.close()
+
+
+async def _ask_with(args: argparse.Namespace, message: str, agent: AgentLoop) -> int:
     run_id = f"run_{uuid.uuid4().hex[:12]}"
 
     outcome = RunOutcome()
@@ -249,7 +295,20 @@ async def _chat_turn(
 
 def _chat(args: argparse.Namespace) -> int:
     settings = _load_settings(args)
-    agent = _build_agent(settings, args.model)
+    # One event loop for the whole session: the model's HTTP client and the
+    # MCP connections are bound to it.
+    with asyncio.Runner() as runner:
+        mcp = runner.run(_connect_mcp(settings, args))
+        try:
+            return _chat_loop(args, settings, runner, _build_agent(settings, args.model, mcp))
+        finally:
+            if mcp is not None:
+                runner.run(mcp.close())
+
+
+def _chat_loop(
+    args: argparse.Namespace, settings: Settings, runner: asyncio.Runner, agent: AgentLoop
+) -> int:
     with contextlib.suppress(ImportError):  # Line editing and history, where available.
         import readline  # noqa: F401
 
@@ -261,34 +320,32 @@ def _chat(args: argparse.Namespace) -> int:
     )
 
     transcript: list[Message] = []
-    # One event loop for the whole session: the model's HTTP client is bound to it.
-    with asyncio.Runner() as runner:
-        while True:
-            try:
-                line = input("you> ").strip()
-            except (EOFError, KeyboardInterrupt):
-                sys.stderr.write("\n")
-                return EXIT_OK
-            if not line:
-                continue
-            if line in ("/exit", "/quit"):
-                return EXIT_OK
-            if line == "/help":
-                sys.stderr.write(_CHAT_HELP + "\n\n")
-                continue
-            if line == "/new":
-                transcript.clear()
-                sys.stderr.write("Started a new conversation.\n\n")
-                continue
-            if line.startswith("/"):
-                sys.stderr.write(f"Unknown command {line.split()[0]}. /help lists commands.\n\n")
-                continue
-            try:
-                runner.run(_chat_turn(agent, line, transcript, args.quiet))
-            except KeyboardInterrupt:
-                sys.stdout.write("\n")
-                sys.stderr.write("[interrupted]\n")
+    while True:
+        try:
+            line = input("you> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            sys.stderr.write("\n")
+            return EXIT_OK
+        if not line:
+            continue
+        if line in ("/exit", "/quit"):
+            return EXIT_OK
+        if line == "/help":
+            sys.stderr.write(_CHAT_HELP + "\n\n")
+            continue
+        if line == "/new":
+            transcript.clear()
+            sys.stderr.write("Started a new conversation.\n\n")
+            continue
+        if line.startswith("/"):
+            sys.stderr.write(f"Unknown command {line.split()[0]}. /help lists commands.\n\n")
+            continue
+        try:
+            runner.run(_chat_turn(agent, line, transcript, args.quiet))
+        except KeyboardInterrupt:
             sys.stdout.write("\n")
+            sys.stderr.write("[interrupted]\n")
+        sys.stdout.write("\n")
 
 
 def _serve(args: argparse.Namespace) -> int:
@@ -298,6 +355,8 @@ def _serve(args: argparse.Namespace) -> int:
         os.environ["WORKSPACE_DIR"] = str(args.workspace)
     if args.read_only:
         os.environ["WORKSPACE_READ_ONLY"] = "true"
+    if args.mcp_config:
+        os.environ["MCP_CONFIG_PATH"] = str(args.mcp_config)
     settings = _load_settings(args)
     uvicorn.run(
         "agent_runtime.api.app:create_app",
@@ -425,6 +484,9 @@ def build_parser() -> argparse.ArgumentParser:
         "-q", "--quiet", action="store_true", help="hide tool activity and token usage"
     )
     agent_options.add_argument(
+        "--no-mcp", action="store_true", help="don't connect the configured MCP servers"
+    )
+    agent_options.add_argument(
         "-v", "--verbose", action="count", default=0, help="show logs on stderr (-vv for debug)"
     )
 
@@ -464,6 +526,9 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--host", help="interface to bind (HOST, default 127.0.0.1)")
     serve.add_argument("--port", type=int, help="port to listen on (PORT, default 8000)")
     serve.add_argument("--reload", action="store_true", help="restart on code changes (dev only)")
+    serve.add_argument(
+        "--mcp-config", type=Path, metavar="FILE", help="MCP servers file (MCP_CONFIG_PATH)"
+    )
     serve.set_defaults(handler=_serve)
 
     tools = commands.add_parser(

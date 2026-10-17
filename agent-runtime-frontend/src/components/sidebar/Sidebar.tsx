@@ -1,6 +1,6 @@
 /**
  * The left column: identity and status, the workspace folder, stored
- * conversations, the tool list, and (at the bottom) the signed-in account,
+ * conversations, MCP integrations, the tool list, and (at the bottom) the signed-in account,
  * theme, and connection settings.
  */
 
@@ -8,6 +8,8 @@ import type { Health, SessionSummary, Tool, User } from '../../api/types';
 import type { Resource } from '../../hooks/useResource';
 import { useTheme, type ThemeChoice } from '../../lib/theme';
 import { Logo } from '../brand/Logo';
+import { McpPanel } from '../mcp/McpPanel';
+import type { McpServers } from '../mcp/useMcpServers';
 import { Icon, type IconName } from '../Icon';
 import { SessionList } from './SessionList';
 import { SettingsPanel } from './SettingsPanel';
@@ -30,6 +32,8 @@ interface SidebarProps {
   user?: User | undefined;
   onSignOut?: (() => void) | undefined;
   sessions: Resource<SessionSummary[]>;
+  /** MCP servers; undefined when the server has MCP turned off. */
+  mcp?: McpServers | undefined;
   activeSessionId: string | null;
   onOpenSession: (id: string) => Promise<void>;
   onRenameSession: (id: string, title: string) => Promise<void>;
@@ -100,6 +104,7 @@ export function Sidebar({
   user,
   onSignOut,
   sessions,
+  mcp,
   activeSessionId,
   onOpenSession,
   onRenameSession,
@@ -151,6 +156,8 @@ export function Sidebar({
             />
           </section>
         )}
+
+        {mcp && <McpPanel mcp={mcp} />}
 
         <section className={styles.section} aria-labelledby="tools-heading">
           <h2 id="tools-heading" className={styles.sectionTitle}>

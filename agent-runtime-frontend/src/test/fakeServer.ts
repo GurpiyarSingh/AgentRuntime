@@ -8,6 +8,8 @@ import type {
   AgentEvent,
   DirectoryListing,
   Health,
+  McpServer,
+  McpServerConfig,
   ModelsResponse,
   SessionDetail,
   Tool,
@@ -84,6 +86,43 @@ export const MODELS: ModelsResponse = {
   ],
 };
 
+export const MCP_CONFIG: McpServerConfig = {
+  type: 'stdio',
+  command: 'uvx',
+  args: ['mcp-server-fetch'],
+  env: {},
+  cwd: null,
+  url: null,
+  headers: {},
+  enabled: true,
+  timeout_s: 60,
+  description: '',
+};
+
+function mcpTool(server: string, tool: string) {
+  return {
+    name: tool,
+    qualified_name: `${server}__${tool}`,
+    description: `The ${tool} tool.`,
+    parameters: {},
+  };
+}
+
+/** A server as the backend reports it: connected with one tool, or disabled. */
+export function mcpServer(name: string, config: McpServerConfig = MCP_CONFIG): McpServer {
+  const on = config.enabled;
+  return {
+    name,
+    config,
+    status: on ? 'connected' : 'disabled',
+    error: null,
+    server_name: on ? `${name}-server` : null,
+    server_version: on ? '1.0' : null,
+    connected_at: on ? new Date().toISOString() : null,
+    tools: on ? [mcpTool(name, 'search')] : [],
+  };
+}
+
 /** Serialise events the way the backend's SSE endpoint does. */
 export function sseBody(events: AgentEvent[]): string {
   return events
@@ -118,6 +157,8 @@ export interface FakeServerOptions {
    * first visitor must create the admin. Omitted means sign-in is off.
    */
   accounts?: Record<string, string>;
+  /** MCP servers; when given, health reports `mcp: true`. */
+  mcp?: { servers: McpServer[]; canManage?: boolean };
   /** Stored sessions; when given, health reports `history: true`. */
   sessions?: SessionDetail[];
   /** Respond to /v1/tools with this status instead of the tool list. */
@@ -129,6 +170,7 @@ export function createFakeServer(options: FakeServerOptions = {}) {
   const requests: RecordedRequest[] = [];
   const chats = [...(options.chats ?? [])];
   const sessions = options.sessions ? [...options.sessions] : null;
+  const mcpServers = options.mcp ? [...options.mcp.servers] : null;
   const accounts = options.accounts ? { ...options.accounts } : null;
   const tokens = new Map<string, string>(); // token -> username
   const userFor = (username: string) => ({
@@ -185,7 +227,63 @@ export function createFakeServer(options: FakeServerOptions = {}) {
         return username ? json(userFor(username)) : json({ detail: 'Sign in to continue.' }, 401);
       }
     }
-    if (url.endsWith('/health')) return json({ ...HEALTH, history: sessions !== null });
+    if (url.endsWith('/health')) {
+      return json({ ...HEALTH, history: sessions !== null, mcp: mcpServers !== null });
+    }
+    if (mcpServers !== null && url.includes('/v1/mcp/')) {
+      const route = new URL(url, 'http://x').pathname.slice('/v1/mcp/'.length).split('/');
+      const name = decodeURIComponent(route[1] ?? '');
+      const index = mcpServers.findIndex((server) => server.name === name);
+      if (route[0] === 'test') {
+        return json({
+          ok: true,
+          duration_s: 0.42,
+          error: null,
+          server_name: 'fake-mcp',
+          server_version: '1.0',
+          tools: [mcpTool('server', 'fetch')],
+        });
+      }
+      if (route[0] === 'import') {
+        const pasted = JSON.parse((body as { json: string }).json) as {
+          mcpServers: Record<string, Partial<McpServerConfig>>;
+        };
+        const added = Object.entries(pasted.mcpServers).map(([serverName, config]) => {
+          mcpServers.push(mcpServer(serverName, { ...MCP_CONFIG, ...config }));
+          return serverName;
+        });
+        return json({ added, replaced: [], skipped: [] });
+      }
+      if (route[0] === 'servers' && !name) {
+        if (method === 'POST') {
+          const created = body as { name: string; config: McpServerConfig };
+          const server = mcpServer(created.name, created.config);
+          mcpServers.push(server);
+          return json(server, 201);
+        }
+        return json({
+          servers: mcpServers,
+          can_manage: options.mcp?.canManage ?? true,
+          allow_stdio: true,
+        });
+      }
+      const current = mcpServers[index];
+      if (!current) return json({ detail: 'Not found' }, 404);
+      if (method === 'DELETE') {
+        mcpServers.splice(index, 1);
+        return new Response(null, { status: 204 });
+      }
+      if (method === 'PATCH') {
+        const { enabled } = body as { enabled: boolean };
+        mcpServers[index] = mcpServer(name, { ...current.config, enabled });
+        return json(mcpServers[index]);
+      }
+      if (method === 'PUT') {
+        mcpServers[index] = mcpServer(name, body as McpServerConfig);
+        return json(mcpServers[index]);
+      }
+      return json(current); // reconnect
+    }
     if (sessions !== null && url.includes('/v1/sessions')) {
       const id = decodeURIComponent(new URL(url, 'http://x').pathname.split('/')[3] ?? '');
       if (!id) return json({ sessions: sessions.map(({ runs: _runs, ...summary }) => summary) });
@@ -204,9 +302,18 @@ export function createFakeServer(options: FakeServerOptions = {}) {
     }
     if (url.endsWith('/v1/models')) return json(MODELS);
     if (url.endsWith('/v1/tools')) {
+      const fromMcp: Tool[] = (mcpServers ?? []).flatMap((server) =>
+        server.tools.map((tool) => ({
+          name: tool.qualified_name,
+          description: `[${server.name}] ${tool.description}`,
+          parameters: { type: 'object' as const, properties: {} },
+          source: 'mcp' as const,
+          server: server.name,
+        })),
+      );
       return options.toolsStatus
         ? json({ detail: 'Invalid or missing API key' }, options.toolsStatus)
-        : json({ tools: TOOLS });
+        : json({ tools: [...TOOLS, ...fromMcp] });
     }
     if (url.includes('/v1/directories')) {
       return json(directoryListing(new URL(url, 'http://x').searchParams.get('path')));

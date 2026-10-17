@@ -20,10 +20,11 @@ from agent_runtime.agent.openai import ModelConfigurationError
 from agent_runtime.agent.outcome import RunOutcome
 from agent_runtime.api.deps import (
     get_agent_factory,
+    get_all_tools,
     get_directory_policy,
+    get_mcp,
     get_session_store,
     get_settings,
-    get_tools,
     get_workspace,
     require_api_key,
     workspace_or_http_error,
@@ -42,6 +43,7 @@ from agent_runtime.auth import Principal
 from agent_runtime.config import Settings
 from agent_runtime.files.directories import DirectoryPolicy
 from agent_runtime.files.workspace import Workspace
+from agent_runtime.mcp_client import McpManager
 from agent_runtime.models import (
     UnknownModelError,
     available_models,
@@ -139,9 +141,10 @@ async def _start_turn(
 @router.get("/health", response_model=HealthResponse, tags=["meta"])
 async def health(
     settings: Settings = Depends(get_settings),
-    tools: ToolRegistry = Depends(get_tools),
+    tools: ToolRegistry = Depends(get_all_tools),
     workspace: Workspace = Depends(get_workspace),
     sessions: ConversationStore = Depends(get_session_store),
+    mcp: McpManager | None = Depends(get_mcp),
 ) -> HealthResponse:
     """Report liveness and how this server is configured (no secrets)."""
     return HealthResponse(
@@ -151,6 +154,7 @@ async def health(
         model=settings.openai_model,
         tools=tools.names(),
         history=sessions.keeps_history,
+        mcp=mcp is not None,
         workspace=WorkspaceStatus(
             read_only=settings.workspace_read_only,
             path=None if settings.is_prod else str(workspace.root),
@@ -171,8 +175,8 @@ async def models(settings: Settings = Depends(get_settings)) -> ModelsResponse:
 
 
 @router.get("/v1/tools", response_model=ToolsResponse, tags=["meta"])
-async def list_tools(tools: ToolRegistry = Depends(get_tools)) -> ToolsResponse:
-    """List every tool the agent can call, with the JSON schema the model sees."""
+async def list_tools(tools: ToolRegistry = Depends(get_all_tools)) -> ToolsResponse:
+    """List every tool the agent can call (built-in and MCP), with the schema the model sees."""
     return ToolsResponse(tools=[ToolView.from_tool(tool) for tool in tools])
 
 
