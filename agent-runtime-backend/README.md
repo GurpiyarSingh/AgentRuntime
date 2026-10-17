@@ -8,7 +8,8 @@ ways, both on the same core:
 - **CLI**: `agent-runtime chat` for a conversation, or `agent-runtime ask` for
   one-shot and scriptable use.
 - **HTTP API**: `agent-runtime serve` starts a FastAPI/uvicorn service. A React
-  web UI for it lives next to this folder in
+  web app for it (sign-in, streaming chat, saved conversations, a folder
+  picker) lives next to this folder in
   [agent-runtime-frontend](../agent-runtime-frontend), and any other HTTP client
   works too.
 
@@ -26,7 +27,14 @@ ways, both on the same core:
 | `search_files` | Grep across the workspace's text files (literal or regex) |
 
 All of them work inside one sandboxed **workspace** directory, and nothing
-outside it.
+outside it. By default that's `WORKSPACE_DIR`; a request may name another
+existing directory instead (the web app's folder picker), within limits you
+set.
+
+With `DATABASE_URL` set (PostgreSQL, or SQLite), the runtime also keeps
+**every conversation and a full activity log** (each event, tool call, token
+count and cost), and the web app **signs people in**, each seeing only their
+own conversations.
 
 ## Why this shape
 
@@ -50,9 +58,16 @@ streaming API, or assert on them in a test.
        │ events         └─────────────────────────────────────────┤
        ▼                                                          ▼
 ┌──────────────┐ ── /v1/chat  /v1/chat/stream          ┌──────────────────┐
-│   FastAPI    │ ── /v1/files (upload/list/download)   │    Workspace     │
+│   FastAPI    │ ── /v1/files  /v1/directories         │    Workspace     │
 │   routes     │ ── /v1/tools  /v1/models  /health ──▶ │ (sandboxed dir)  │
-└──────────────┘                                       └──────────────────┘
+└──────┬───────┘ ── /v1/sessions  /v1/auth             └──────────────────┘
+       │ transcripts, events, tool calls, accounts
+       ▼
+┌──────────────────────────────────────┐
+│ ConversationStore                    │
+│  SessionStore   in memory (default)  │
+│  DatabaseStore  PostgreSQL / SQLite  │
+└──────────────────────────────────────┘
 ```
 
 ## Project layout
@@ -72,22 +87,32 @@ src/agent_runtime/
     file_tools.py  The default tools, and default_tools() to build the set
   files/
     workspace.py   Sandboxed path resolution, atomic writes
+    directories.py Which directories a request may choose, and browsing them
     readers.py     Any file -> text (PDF, DOCX, XLSX, PPTX, archives, encodings)
     writers.py     Text -> any file (Markdown -> DOCX/PDF, CSV/JSON -> XLSX, ...)
     images.py      Any raster image -> a scaled PNG/JPEG for the model
+  storage/
+    tables.py      Database schema: users, tokens, sessions, messages, runs, events, tool calls
+    store.py       DatabaseStore: persistent history + the run recorder
+    users.py       Accounts and sign-in tokens
+    codec.py       Transcript messages <-> database rows
   api/
     app.py         FastAPI factory
     routes.py      /health, /v1/models, /v1/tools, /v1/chat, /v1/chat/stream
     files.py       /v1/files: upload, list, download, delete
+    directories.py /v1/directories: browse the server's folders
+    sessions.py    /v1/sessions: list, open, rename, delete stored conversations
+    auth.py        /v1/auth: setup, login, logout, me
     schemas.py     Request/response models
-    deps.py        Dependency wiring, optional API-key auth
-  cli.py           Command line: chat, ask, serve, tools, models
+    deps.py        Dependency wiring; who is calling (token, API key, or open)
+  auth.py          Password hashing (scrypt), tokens, login throttling, Principal
+  cli.py           Command line: chat, ask, serve, tools, models, users
   runtime.py       Composition root: workspace, tools, system prompt, AgentFactory
   config.py        Typed settings from env / .env
   models.py        Selectable models and their token prices
   usage.py         Token + cost accounting
-  sessions.py      In-memory, TTL-bounded multi-turn history
-tests/             Fully offline: no OpenAI calls, no network
+  sessions.py      ConversationStore interface, and the in-memory SessionStore
+tests/             Fully offline: no OpenAI calls, no network (databases are SQLite)
 ```
 
 ## Quick start
@@ -122,6 +147,8 @@ To run the API in a container instead, see the **[Docker guide](DOCKER.md)**.
 | `agent-runtime serve` | Run the HTTP API (`--host`, `--port`, `--reload`). |
 | `agent-runtime tools` | List the tools the agent can call. |
 | `agent-runtime models` | List selectable models and their prices. |
+| `agent-runtime users add NAME` | Create a web app account (asks for the password twice; `--admin`, `--display-name`, `--password-stdin` for scripts). Needs `DATABASE_URL`. |
+| `agent-runtime users list` | Show every account and when it last signed in. |
 
 `chat` and `ask` take `--workspace DIR`, `--read-only`, `--model ID`,
 `--max-steps N`, `--no-stream`, `-q/--quiet` and `-v/--verbose`. `serve` and
@@ -181,22 +208,26 @@ The chat response:
 }
 ```
 
-Send the returned `session_id` back to continue the conversation, and
-`"model": "gpt-5.2"` to pick a model from `/v1/models`. A run that hits its
+Send the returned `session_id` back to continue the conversation,
+`"model": "gpt-5.2"` to pick a model from `/v1/models`, and
+`"workspace": "/abs/path/to/folder"` to work in another directory (see
+[Choosing the workspace](#choosing-the-workspace)). A run that hits its
 step or time budget, or fails upstream, comes back with `"status": "failed"`,
 an empty `answer` and the reason in `error`. It is never disguised as
 success. (In `ENVIRONMENT=prod` the reason is generic.)
 
 Errors that happen before any model call use HTTP status codes: `400` for an
-unknown model, `422` for an invalid body (`session_id` is at most 128
-characters of `A-Z a-z 0-9 _ . : -`), `401` for a bad API key, and `503`
-when the server has no `OPENAI_API_KEY`.
+unknown model or a directory that can't be used, `422` for an invalid body
+(`session_id` is at most 128 characters of `A-Z a-z 0-9 _ . : -`), `401` when
+not signed in (or a bad API key), `403` when choosing a directory is turned
+off, `404` for someone else's session, and `503` when the server has no
+`OPENAI_API_KEY`.
 
 ### Endpoints
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/health` | Status, default model, enabled tools, workspace mode |
+| `GET` | `/health` | Status, default model, enabled tools, workspace mode, whether history is stored |
 | `GET` | `/v1/models` | Selectable models and the prices used to cost runs |
 | `GET` | `/v1/tools` | Every tool, with the exact JSON schema the model sees |
 | `POST` | `/v1/chat` | Run the agent to completion |
@@ -205,6 +236,19 @@ when the server has no `OPENAI_API_KEY`.
 | `POST` | `/v1/files` | Upload (multipart: `file`, optional `path`, `overwrite`) |
 | `GET` | `/v1/files/{path}` | Download a file |
 | `DELETE` | `/v1/files/{path}` | Delete a file |
+| `GET` | `/v1/directories?path=` | Subfolders of a server folder; top-level locations without `path` |
+| `GET` | `/v1/sessions` | Your stored conversations, newest first (`limit`, `offset`, `q` title filter) |
+| `GET` | `/v1/sessions/{id}` | One conversation: every run with its recorded events |
+| `PATCH` | `/v1/sessions/{id}` | Rename (`{"title": "..."}`) |
+| `DELETE` | `/v1/sessions/{id}` | Delete it, with its transcript and activity log |
+| `GET` | `/v1/auth/status` | Is sign-in on, and does the first account still need creating? (public) |
+| `POST` | `/v1/auth/setup` | Create the first account, as admin; refused once one exists (public) |
+| `POST` | `/v1/auth/login` | Username + password -> token (public) |
+| `POST` | `/v1/auth/logout` | Revoke this token |
+| `GET` | `/v1/auth/me` | The signed-in account |
+
+Every `/v1/files` endpoint also takes `?workspace=` to use a chosen directory.
+The `/v1/sessions` endpoints need a database (`501` otherwise).
 
 ### Streaming
 
@@ -216,16 +260,103 @@ and `model`.
 
 ### Auth
 
-If `API_KEY` is set, `/v1/chat*` and `/v1/files*` require an `X-API-Key`
-header. **Set it before exposing the server beyond localhost**: the files
-API can read, upload and delete anything in the workspace.
+Who may call the API depends on the configuration:
+
+| Configuration | Callers must send | They see |
+|---|---|---|
+| A database, `AUTH_ENABLED=true` (the default with a database) | `Authorization: Bearer <token>` from `/v1/auth/login`, or the `API_KEY` | Their own sessions (admins also see sessions from before sign-in); the API key sees all |
+| No database, `API_KEY` set | `X-API-Key: <key>` | Everything |
+| No database, no `API_KEY` | Nothing: the server is open | Everything |
+
+`/health`, `/v1/models`, `/v1/tools` and `/v1/auth/status`, `/setup` and
+`/login` stay public, so the sign-in page can load.
+
+How sign-in works:
+
+- **The first account is created from the web app** (`/v1/auth/setup`) and is
+  an admin. After that, setup is closed; add people with
+  `agent-runtime users add NAME`.
+- **Passwords** are hashed with scrypt (salted, memory-hard) from the standard
+  library. Usernames are case-insensitive.
+- **Tokens** are 32 random bytes. The database stores only their SHA-256, so a
+  leaked database can't be used to sign in. They last `AUTH_TOKEN_TTL_HOURS`
+  (7 days by default) and are revoked on sign-out.
+- **Guessing is throttled**: after 5 wrong passwords for one name from one
+  address within 5 minutes, sign-in answers `429` with `Retry-After`.
+- **Sessions are private.** Listing, opening, renaming, deleting and continuing
+  a session all check its owner. Someone else's session answers `404`, not
+  `403`, so its existence isn't revealed.
+
+**Without a database, set `API_KEY` before exposing the server beyond
+localhost**: the files API can read, upload and delete anything in the
+workspace.
+
+## Choosing the workspace
+
+A request may work in a directory other than `WORKSPACE_DIR`: `"workspace"` in
+the chat body, `?workspace=` on the files API. The web app's **Browse…** button
+uses `GET /v1/directories` to let people pick one on the server's disk (a
+browser can't reveal real paths, and the tools run on the server anyway).
+
+A chosen directory must be absolute and already exist. Two settings bound it:
+
+- `WORKSPACE_SELECTABLE=false` turns choosing off: requests always use
+  `WORKSPACE_DIR`, and `/v1/directories` answers `403`.
+- `WORKSPACE_BROWSE_ROOTS=/data,/srv/shared` limits browsing and choosing to
+  those directories and below. Empty (the default) allows anything the server
+  process can read. **Set it on any shared server.** The Docker image sets
+  `/data`.
+
+Inside the chosen directory, the usual sandbox applies: nothing outside it can
+be reached.
+
+## Sessions and the activity log
+
+Without `DATABASE_URL`, conversations live in memory: they expire after
+`SESSION_TTL_S` of inactivity and vanish on restart, and nothing else is
+recorded.
+
+With it, the `DatabaseStore` keeps everything, in these tables (created at
+startup; columns added since are added automatically):
+
+| Table | One row per | Holds |
+|---|---|---|
+| `users` | Account | Username, display name, scrypt hash, admin flag, last sign-in |
+| `auth_tokens` | Signed-in browser | SHA-256 of the token, expiry, last use, client address |
+| `sessions` | Conversation | Owner, title (its first message), model, folder, client, totals: runs, tokens, cost |
+| `messages` | Transcript entry | The exact messages replayed to the model, including images it was shown |
+| `runs` | User message | Status (`running`, `completed`, `failed`, `cancelled`), answer or error, steps, tool calls, tokens, cost, duration |
+| `run_events` | Streamed event | The event's type and its JSON payload, exactly as the client received it |
+| `tool_calls` | Tool call | Tool, arguments, result, ok/error/cancelled, duration |
+
+A few details:
+
+- **Each event is recorded before it is sent**, so a client that disconnects
+  loses nothing; its run is marked `cancelled`.
+- **Streamed tokens are stored as one `model_token` event per step**, not one
+  per token. Replaying a run's events through the client's reducer rebuilds
+  the reply exactly as it was shown live.
+- **Recording is best effort.** A failed write is logged and the run carries
+  on.
+- **The model sees at most `SESSION_MAX_MESSAGES`** of a long conversation,
+  but every message is kept.
+
+Payloads are `JSONB` on PostgreSQL, so questions are plain SQL:
+
+```sql
+-- Cost per day
+select date_trunc('day', started_at) as day, sum(cost_usd) from runs group by 1 order by 1;
+
+-- Which tools fail most
+select tool_name, count(*) filter (where is_error) as failures, count(*) from tool_calls group by 1;
+```
 
 ## Working with files
 
 **The workspace is a sandbox.** Every path from the model or a client is
-resolved (following `..` and symlinks) and refused if it lands outside
-`WORKSPACE_DIR`. Absolute paths are accepted only when they already point
-inside it. Set `WORKSPACE_READ_ONLY=true` to give the agent no tool that
+resolved (following `..` and symlinks) and refused if it lands outside the
+request's workspace (`WORKSPACE_DIR`, or the directory the request chose).
+Absolute paths are accepted only when they already point inside it. Set `WORKSPACE_READ_ONLY=true` to give the agent no tool that
 creates or changes files (the files API still works for the operator).
 
 **How images reach the model.** OpenAI tool results can only carry text. So
@@ -306,10 +437,19 @@ composition root that decides what every request runs with.
 
 All settings live in [config.py](src/agent_runtime/config.py), read from the
 environment or `.env`. See [.env.example](.env.example) for the full list:
-workspace (`WORKSPACE_DIR`, `WORKSPACE_READ_ONLY`, `MAX_FILE_BYTES`,
-`READ_MAX_CHARS`, `IMAGE_MAX_DIMENSION`), loop budget (`MAX_STEPS`,
+workspace (`WORKSPACE_DIR`, `WORKSPACE_READ_ONLY`, `WORKSPACE_SELECTABLE`,
+`WORKSPACE_BROWSE_ROOTS`, `MAX_FILE_BYTES`, `READ_MAX_CHARS`,
+`IMAGE_MAX_DIMENSION`), persistence (`DATABASE_URL`, `DATABASE_ECHO`),
+sign-in (`AUTH_ENABLED`, `AUTH_TOKEN_TTL_HOURS`), loop budget (`MAX_STEPS`,
 `TOOL_TIMEOUT_S`, `RUN_TIMEOUT_S`, `MAX_PARALLEL_TOOL_CALLS`), sessions,
-server and auth.
+server and the API key.
+
+`DATABASE_URL` takes a plain URL, and the async driver is picked for you:
+`postgresql://user:password@host:5432/agent_runtime` uses asyncpg, and
+`sqlite:///path/to/file.db` uses aiosqlite. The database itself must exist.
+
+**`.env` is read once, at startup.** After changing it, restart the server:
+`--reload` restarts only on code changes.
 
 ### Token prices
 
@@ -345,9 +485,14 @@ The suite never calls OpenAI and never opens a socket. `tests/fakes.py`
 provides a `FakeChatModel` that replays scripted turns. The file tools,
 readers and writers run against real libraries in a temporary directory:
 every document format is written and read back. Workspace escapes
-(`..`, absolute paths, symlinks), the files API, image delivery to the model
-and token accounting are all tested deterministically.
+(`..`, absolute paths, symlinks), choosing and browsing directories, the
+files API, image delivery to the model and token accounting are all tested
+deterministically. The database store, the activity log, history across a
+restart, sign-in, per-user isolation and throttling run against a temporary
+SQLite file, through the same code that serves PostgreSQL.
 
-The sessions store is in-memory and single-process. For several workers,
-swap it for a Redis- or DB-backed implementation behind the same interface,
-and point `WORKSPACE_DIR` at shared storage.
+Run one server process. Without a database, conversations live in that
+process's memory. With one, history is shared, but two runs on the same
+session at once could interleave their transcript writes. For several
+workers, also point `WORKSPACE_DIR` at shared storage. As the schema stops
+being purely additive, adopt a migration tool such as Alembic.

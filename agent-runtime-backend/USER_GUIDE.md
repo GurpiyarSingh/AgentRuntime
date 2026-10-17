@@ -20,8 +20,9 @@ it a folder, and it can:
 You ask for things in normal English, for example *"Summarise report.pdf into a
 one-page Word document"*, and it does the work.
 
-It only ever touches **one folder**, called the **workspace**. It cannot see or
-change anything else on your computer.
+It only ever touches **one folder at a time**, called the **workspace**. It
+cannot see or change anything outside that folder. In the web app you can pick
+which folder it works in.
 
 There are three ways to use it:
 
@@ -130,6 +131,46 @@ agent-runtime tools
 
 You should see a list of tools (`list_files`, `read_file` and so on). Setup is
 done.
+
+### Optional: save conversations and add sign-in
+
+On its own, the assistant forgets a conversation after an hour without
+messages, or whenever it restarts. If you have **PostgreSQL** (a free database
+program, from [postgresql.org](https://www.postgresql.org/download/)), it can
+keep every conversation, and a record of everything it did, permanently. The
+web app then also asks people to **sign in**, and everyone sees only their own
+conversations.
+
+**1. Create an empty database** called `agent_runtime`. In pgAdmin, right-click
+**Databases → Create → Database**, or run this in its Query Tool:
+
+```sql
+CREATE DATABASE agent_runtime;
+```
+
+**2. Tell the assistant where it is.** Add this line to your `.env` file,
+with your PostgreSQL user name and password:
+
+```
+DATABASE_URL=postgresql://postgres:YOUR-PASSWORD@localhost:5432/agent_runtime
+```
+
+The assistant creates its tables the next time it starts.
+
+**3. Create your account.** Start the web app (see [Mode 3](#mode-3-web-app-in-your-browser)).
+The first time you open it, it asks you to **create the admin account**:
+choose a username and a password of at least 8 characters.
+
+**Adding more people.** Each person needs their own account. Create one from
+the terminal; it asks for the new password twice:
+
+```powershell
+agent-runtime users add maria
+agent-runtime users list            # see everyone, and when they last signed in
+```
+
+> **Changed `.env`?** Stop the service (**Ctrl+C**) and start it again. It reads
+> its settings only when it starts.
 
 ---
 
@@ -304,10 +345,16 @@ so use **two terminal windows**:
 
 3. Open [http://localhost:5173](http://localhost:5173) in your browser.
 
+If you set up a database, you'll see a **sign-in page** first. On the very
+first visit it asks you to create the admin account.
+
+In the web app you can also **choose which folder the assistant works in**:
+click **Browse…** in the **Workspace** box on the left and pick any folder.
+
 The **[Web App User Guide](../agent-runtime-frontend/USER_GUIDE.md)** explains
-everything on the page step by step: attaching files, following what the
-assistant does, downloading what it creates, stopping an answer, and fixing
-common problems.
+everything on the page step by step: signing in, choosing a folder, attaching
+files, following what the assistant does, downloading what it creates,
+reopening past conversations, and fixing common problems.
 
 ---
 
@@ -328,11 +375,17 @@ You can set a monthly spending limit on your OpenAI account at
 
 ## Is it safe?
 
-- It **only works inside the workspace folder**. It cannot open, change or
-  delete anything else on your computer.
+- It **only works inside the workspace folder** you give it. It cannot open,
+  change or delete anything outside that folder.
 - It **never overwrites an existing file** unless you clearly ask it to.
 - With `--read-only` it **cannot change anything at all**.
 - The command line has **no way to delete files**.
+- **The web app's folder picker can open any folder the service can read.**
+  That's what you want on your own computer. If other people can reach the
+  service, limit it to the folders you mean to share, by adding a line like
+  `WORKSPACE_BROWSE_ROOTS=D:\Shared` to `.env`.
+- **With a database, everyone signs in** and sees only their own
+  conversations. Passwords are stored scrambled (hashed), never as written.
 - Your files are sent to OpenAI so the AI can read them. Don't use it on
   documents you're not allowed to share with an outside service.
 
@@ -353,6 +406,11 @@ You can set a monthly spending limit on your OpenAI account at
 | A scanned PDF gives no text | Scans are pictures, not text. Save the page as an image and ask the assistant to look at it. |
 | `did not finish within 8 steps` | The task was too big for one go. Break it into smaller requests, or add `--max-steps 15`. |
 | An error from OpenAI about quota or billing | Add credit or check your limits at [platform.openai.com](https://platform.openai.com/). |
+| The service won't start and mentions the database, `password authentication failed` or `connection refused` | Check that PostgreSQL is running, and that the user name, password and database name in `DATABASE_URL` are right. |
+| `database "agent_runtime" does not exist` | Create it first (see [Optional: save conversations](#optional-save-conversations-and-add-sign-in)). |
+| The web app doesn't show a sign-in page, or **Conversations**, after adding `DATABASE_URL` | The service only reads `.env` when it starts. Stop it with **Ctrl+C** and start it again. |
+| `accounts need a database` from `agent-runtime users` | Add `DATABASE_URL` to `.env` first. |
+| `The username ... is taken` | Pick another name. Usernames ignore upper and lower case. |
 
 ---
 
@@ -364,6 +422,8 @@ agent-runtime ask "your question"       Ask one thing and get the answer
 agent-runtime serve                     Start the web service (API)
 agent-runtime tools                     See what the assistant can do
 agent-runtime models                    See which AI models you can choose
+agent-runtime users add NAME            Create a web app account (needs a database)
+agent-runtime users list                See every account
 agent-runtime --help                    Show all commands
 agent-runtime chat --help               Show all options for a command
 

@@ -18,8 +18,8 @@ The assistant can **read** documents (Word, PDF, Excel, PowerPoint, text and
 more), **look at** pictures, **create** new files, **edit** text files, and
 **search** through your files.
 
-It works inside one folder on your computer, called the **workspace**, and
-cannot see or change anything outside it.
+It works inside one folder, called the **workspace**, and cannot see or change
+anything outside it. You can choose which folder that is.
 
 > **Two parts work together.** The web app is only the page you look at. The
 > real work happens in the **assistant service** (the "backend"), which must be
@@ -33,7 +33,8 @@ You need:
 
 1. **The assistant service, set up once.** Follow the one-time setup in the
    [backend User Guide](../agent-runtime-backend/USER_GUIDE.md#one-time-setup).
-   It covers installing Python and adding your OpenAI key.
+   It covers installing Python and adding your OpenAI key. To **save
+   conversations and use sign-in**, also follow its optional database step.
 2. **Node.js**, which runs the web app. It's free: download the **LTS** version
    from [nodejs.org](https://nodejs.org) and install it with the default
    options.
@@ -89,18 +90,52 @@ browser tab, then press **Ctrl+C** in each terminal (or just close them).
 
 ---
 
+## Signing in
+
+![The sign-in page](docs/login.png)
+
+If the assistant service has a database, the app opens on a **sign-in page**.
+(Without a database there's no sign-in: the app opens straight away, and the
+bottom of the left panel says **Local mode**.)
+
+**The very first time**, the page says **Create your admin account**. You're
+the first one here, so you become the administrator:
+
+1. Optionally type your name, as it should appear in the app.
+2. Choose a **username**: letters, numbers and `_ . @ -`.
+3. Choose a **password** of at least 8 characters. A bar under it shows how
+   strong it is; aim for green.
+4. Type the password again, and click **Create account & continue**.
+
+**After that**, the page says **Welcome back**. Type your username and
+password and click **Sign in**. Usernames ignore upper and lower case. Click the
+**eye** to show the password as you type it.
+
+- **Staying signed in.** The app remembers you in this browser for 7 days.
+- **Signing out.** Click the **door-and-arrow** button at the bottom of the left
+  panel, next to your name.
+- **Accounts for other people.** Whoever runs the assistant service creates
+  them with `agent-runtime users add NAME` (see the
+  [backend guide](../agent-runtime-backend/USER_GUIDE.md#optional-save-conversations-and-add-sign-in)).
+  Each person sees only their own conversations.
+
+---
+
 ## A tour of the screen
 
-| Area            | Where       | What it's for                                                                                          |
-| --------------- | ----------- | ------------------------------------------------------------------------------------------------------ |
-| **Tools panel** | Left side   | Lists everything the assistant can do. A green dot next to **Connected** means the service is running. |
-| **Chat**        | Middle      | Your conversation with the assistant.                                                                  |
-| **Message box** | Bottom      | Where you type. The **paperclip** attaches files, and the **arrow** sends.                             |
-| **Model menu**  | Top right   | Choose which AI model answers (e.g. GPT-4o or GPT-5.2).                                                |
-| **New chat**    | Top right   | Start a fresh conversation.                                                                            |
-| **Settings**    | Bottom left | Enter an API key, if your service needs one.                                                           |
+| Area                   | Where            | What it's for                                                                                                        |
+| ---------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------- |
+| **Status**             | Top left         | A green dot next to **Connected** means the service is running.                                                      |
+| **Workspace**          | Left, at the top | The folder the assistant works in. **Browse…** picks another.                                                        |
+| **Conversations**      | Left             | Your past conversations, newest first. Shown when the service has a database.                                        |
+| **Tools**              | Left             | Everything the assistant can do. Click one for details.                                                              |
+| **You**                | Bottom left      | Your name, the **theme** switch (computer, sun, moon), and **sign out**. In Local mode, **Settings** for an API key. |
+| **Conversation title** | Top of the chat  | The conversation's name. A **Working** badge appears while the assistant is busy.                                    |
+| **Model menu**         | Top right        | Choose which AI model answers (e.g. GPT-4o or GPT-5.2).                                                              |
+| **New chat**           | Top right        | Start a fresh conversation.                                                                                          |
+| **Message box**        | Bottom           | Where you type. The **paperclip** attaches files, and the **arrow** sends.                                           |
 
-When you first open the page, the chat shows a few **example requests**. Click
+When you start a new conversation, the chat shows four **ideas** to try. Click
 one to put it in the message box, change it if you like, and press **Enter**.
 
 ---
@@ -126,6 +161,26 @@ Good things to ask:
 - _"Make a 5-slide presentation about our product launch."_
 - _"Make a spreadsheet of monthly expenses: rent 1200, food 400, travel 150."_
 
+### Choose the folder it works in
+
+The **Workspace** box at the top left shows the folder's full path. It says
+**default** for the service's own folder, or **chosen** for one you picked.
+
+1. Click **Browse…**. A window opens showing folders on the computer running
+   the assistant service.
+2. Click a folder to open it, or the **up arrow** to go back up. You can also
+   paste a path into the box at the top and press **Enter**.
+3. When you're in the right folder, click **Use this folder**.
+
+From then on, the assistant reads and creates files in that folder, and
+attachments are uploaded there. Click **Use default** to go back. Your choice
+is remembered, and reopening an old conversation switches back to the folder
+it used.
+
+> If there's no **Browse…** button, whoever runs the service has switched
+> folder choosing off. If some folders are missing, they've limited it to
+> certain folders.
+
 ### Give the assistant a file
 
 1. Click the **paperclip** next to the message box.
@@ -143,18 +198,22 @@ version, rename your file first.
 
 ### Watch what the assistant does
 
-While it works, each step appears as a small **card** in the reply, for
-example `read_file  uploads/report.pdf  0.3 s`:
+While it works, a line under the assistant's name says what it's doing, such
+as **Thinking…** or **Using read file…**, and its icon gets a spinning ring.
 
-- A **spinning** circle means the step is still running.
-- A **tick** means it worked.
-- A **warning sign** means it didn't. The assistant usually explains what went
-  wrong and tries another way.
+Each step it takes appears as a **card** with a coloured icon for the kind of
+step: a folder for listing files, a page for reading, a picture for looking at
+images, a magnifier for searching, a green page for creating, a pencil for
+editing. For example: **Read file** `uploads/report.pdf` `0.3 s`.
+
+- A **spinning** circle means the step is still running, and a light sweeps
+  across the card.
+- A green **tick** means it worked.
+- A red **warning sign** means it didn't. The assistant usually explains what
+  went wrong and tries another way.
 
 Click a card to see exactly what the assistant asked for and what it got back.
 You don't need to, but it's there if you're curious.
-
-While it's thinking between steps, you'll see three bouncing dots.
 
 ### Get the files it creates
 
@@ -175,29 +234,48 @@ starts from a clean point.
 
 ### Start over
 
-Click **New chat** (top right) to clear the conversation and start fresh. The
-assistant forgets the previous conversation, but your files stay in the
-workspace.
+Click **New chat** (top right) to start a fresh conversation. The previous one
+is still in **Conversations** on the left (if the service has a database), and
+your files stay in the workspace.
 
 ### Choose a model
 
 Use the menu at the top right. **GPT-4o** is fast and inexpensive and right for
 most requests. **GPT-5.2** reasons more carefully but is slower. Your choice is
-remembered the next time you open the app.
+remembered the next time you open the app. The model that wrote each reply is
+shown next to the assistant's name.
 
 ### See what it cost
 
 Under each finished reply there's a small line such as
-`gpt-4o · 4,722 tokens · $0.0156`. That's the model used, how much text it
-processed, and what that answer cost on your OpenAI account. Most answers cost
-less than a cent.
+`4,722 tokens · $0.0156`. That's how much text the assistant processed and what
+that answer cost on your OpenAI account. Most answers cost less than a cent.
+
+---
+
+## Your conversations
+
+If the assistant service has a database, every conversation is saved, and the
+**Conversations** list on the left shows them, newest first. Each one shows
+when you last used it, how many messages it has, and what it cost.
+
+- **Open one** by clicking it. The whole conversation comes back, including
+  every step the assistant took, and you can carry on from where you left off.
+  The one you're in is highlighted.
+- **Rename** it: point at it and click the **pencil**, type a new name, and
+  press **Enter** (or **Esc** to cancel).
+- **Delete** it: point at it, click the **bin**, then **Delete** to confirm.
+  This removes it permanently, along with its record of everything the
+  assistant did.
+
+A new conversation is named after the first line of your first message.
 
 ---
 
 ## The tools panel
 
-The left panel lists the assistant's tools. Click one to see what it does and
-what information it needs.
+The left panel lists the assistant's tools, each with its icon. Click one to
+see what it does and what information it needs.
 
 | Tool           | In plain words                                                  |
 | -------------- | --------------------------------------------------------------- |
@@ -211,15 +289,29 @@ what information it needs.
 As you chat, a small number appears next to each tool showing how many times
 the assistant used it in this conversation (for example **2×**).
 
-If the panel says **read-only** at the top, the assistant can read but not
+If the top of the panel says **read-only**, the assistant can read but not
 create or change files, so `write_file` and `edit_file` won't be listed.
 
 ---
 
-## Settings: API key
+## Light or dark
 
-Most people can skip this. If whoever set up the assistant service gave it a
-password (an **API key**), the app needs it too:
+The app comes in a dark and a light look. Use the three small buttons at the
+bottom left:
+
+- **Computer**: follow your computer's setting (the default)
+- **Sun**: always light
+- **Moon**: always dark
+
+Your choice is remembered in this browser.
+
+---
+
+## Settings: API key (Local mode only)
+
+Most people can skip this. When the service has no sign-in (**Local mode**),
+whoever set it up may have given it a password, called an **API key**. The app
+then needs it too:
 
 1. Click **Settings** at the bottom left.
 2. Paste the key into the **API key** box and click **Save**.
@@ -228,47 +320,59 @@ The panel then shows **API key set**. The key is stored only in this browser on
 this computer. To remove it, clear the box and click **Save**.
 
 You'll know you need a key if the tools panel says _"The server needs an API
-key."_
+key."_ With sign-in, there's no API key to enter: your account is enough.
 
 ---
 
 ## On a phone or small window
 
-On narrow screens the tools panel is hidden to make room for the chat. Tap the
+On narrow screens the left panel is hidden to make room for the chat. Tap the
 **☰ menu** button at the top left to open it, and tap **×** or outside the panel
-to close it.
+to close it. The sign-in page shows its picture as a banner above the form.
 
 ---
 
 ## Privacy and safety
 
 - The assistant **only works inside the workspace folder**. It can't open,
-  change or delete anything else on your computer.
+  change or delete anything outside it.
 - It **never overwrites an existing file** unless you clearly ask it to.
 - Files you attach, and the contents of files it reads, are **sent to OpenAI**
   so the AI can understand them. Don't use it on documents you aren't allowed
   to share with an outside service.
-- Your API key (if any) and model choice are saved **only in your browser**.
-- Conversations are not saved permanently. The assistant forgets one after an
-  hour without new messages, or whenever the assistant service is restarted.
-  Refreshing the page also clears the conversation from the screen.
+- **With sign-in, your conversations are private to you.** Other people with
+  accounts can't see, open or delete them. Your password is stored scrambled
+  (hashed), never as written.
+- **Saved conversations are kept until you delete them**, in the database of
+  whoever runs the service. In Local mode nothing is kept: the assistant
+  forgets a conversation after an hour without new messages, or whenever the
+  service restarts.
+- Your sign-in, theme, model and folder choices are remembered **only in this
+  browser**.
 
 ---
 
 ## Troubleshooting
 
-| You see                                                                           | What to do                                                                                                                                                                                                          |
-| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A red **Cannot reach the agent server** banner, or **Offline** in the tools panel | Terminal 1 isn't running `agent-runtime serve`. Start it, then click **Retry**.                                                                                                                                     |
-| The page won't load at all                                                        | Terminal 2 isn't running `npm run dev`. Start it and refresh the page.                                                                                                                                              |
-| `npm` is not recognised                                                           | Node.js isn't installed, or the terminal was opened before installing it. Install Node.js, then open a new terminal.                                                                                                |
-| **OPENAI_API_KEY is not set** under a reply                                       | The assistant service has no OpenAI key. Add it to the `.env` file in the `agent-runtime-backend` folder (see the [backend guide](../agent-runtime-backend/USER_GUIDE.md#one-time-setup)), then restart Terminal 1. |
-| **The server needs an API key**                                                   | Enter the key under **Settings** (bottom left).                                                                                                                                                                     |
-| A file label turns red                                                            | That upload failed. The label says why, often that the file is too large. Remove it and try again.                                                                                                                  |
-| The model menu says **Loading models…** for a long time                           | The service isn't reachable. See the first row.                                                                                                                                                                     |
-| The reply says it **did not finish within 8 steps**                               | The task was too big for one go. Ask for it in smaller pieces.                                                                                                                                                      |
-| **The connection closed before the agent finished**                               | The service stopped or restarted mid-answer. Check Terminal 1, then send your message again.                                                                                                                        |
-| An error mentioning OpenAI **quota** or **billing**                               | Add credit or check your limits at [platform.openai.com](https://platform.openai.com/).                                                                                                                             |
+| You see                                                                          | What to do                                                                                                                                                                                                          |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Can't reach the runtime**, with a **Try again** button                         | Terminal 1 isn't running `agent-runtime serve`. Start it, then click **Try again**.                                                                                                                                 |
+| A red **Cannot reach the agent server** banner, or **Offline** in the left panel | The service stopped while you were using the app. Start it again, then click **Retry**.                                                                                                                             |
+| The page won't load at all                                                       | Terminal 2 isn't running `npm run dev`. Start it and refresh the page.                                                                                                                                              |
+| **Wrong username or password**                                                   | Check the spelling, and that Caps Lock is off. Usernames ignore case, but passwords don't.                                                                                                                          |
+| **Too many attempts. Try again in … min.**                                       | Five wrong passwords in a row pause sign-in for that name for a few minutes. Wait, then try again.                                                                                                                  |
+| **Your session expired. Sign in again.**                                         | Sign-ins last 7 days. Sign in again; your conversations are still there.                                                                                                                                            |
+| I forgot my password                                                             | Ask whoever runs the service to create you a new account with `agent-runtime users add`.                                                                                                                            |
+| No sign-in page and no **Conversations**, though a database was set up           | The service reads its settings only when it starts. Restart Terminal 1, then refresh the page.                                                                                                                      |
+| `npm` is not recognised                                                          | Node.js isn't installed, or the terminal was opened before installing it. Install Node.js, then open a new terminal.                                                                                                |
+| **OPENAI_API_KEY is not set** under a reply                                      | The assistant service has no OpenAI key. Add it to the `.env` file in the `agent-runtime-backend` folder (see the [backend guide](../agent-runtime-backend/USER_GUIDE.md#one-time-setup)), then restart Terminal 1. |
+| **Directory not found**, or **outside the directories this server allows**       | The chosen folder was moved, or isn't one you're allowed to use. Click **Browse…** and pick another, or **Use default**.                                                                                            |
+| **The server needs an API key**                                                  | Enter the key under **Settings** (bottom left).                                                                                                                                                                     |
+| A file label turns red                                                           | That upload failed. The label says why, often that the file is too large. Remove it and try again.                                                                                                                  |
+| The model menu says **Loading models…** for a long time                          | The service isn't reachable. See the first row.                                                                                                                                                                     |
+| The reply says it **did not finish within 8 steps**                              | The task was too big for one go. Ask for it in smaller pieces.                                                                                                                                                      |
+| **The connection closed before the agent finished**                              | The service stopped or restarted mid-answer. Check Terminal 1, then send your message again.                                                                                                                        |
+| An error mentioning OpenAI **quota** or **billing**                              | Add credit or check your limits at [platform.openai.com](https://platform.openai.com/).                                                                                                                             |
 
 Still stuck? The [backend User Guide](../agent-runtime-backend/USER_GUIDE.md#troubleshooting)
 covers problems with the assistant service itself.
@@ -281,11 +385,14 @@ covers problems with the assistant service itself.
 Start (two terminals):
   1. agent-runtime-backend   ->  .\venv\Scripts\Activate.ps1  then  agent-runtime serve
   2. agent-runtime-frontend  ->  npm run dev
-  3. Open http://localhost:5173
+  3. Open http://localhost:5173 and sign in (first visit: create the admin account)
 
 In the app:
-  Enter             send            Shift+Enter    new line
-  Paperclip         attach files    Square button  stop the answer
-  New chat          start over      Card           click to see the step's details
+  Enter             send              Shift+Enter       new line
+  Paperclip         attach files      Square button     stop the answer
+  Browse…           choose a folder   New chat          start over
+  Conversations     reopen, rename (pencil), delete (bin)
+  Card              click to see the step's details
   Download          save a file the assistant created
+  Bottom left       theme (computer / sun / moon) and sign out
 ```

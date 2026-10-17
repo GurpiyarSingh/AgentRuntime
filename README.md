@@ -11,8 +11,8 @@ The repository has two parts:
 
 | Folder | What it is | Built with |
 |---|---|---|
-| [`agent-runtime-backend/`](agent-runtime-backend) | The agent itself: the reasoning loop, the file tools, a command-line interface and an HTTP API | Python 3.11+, FastAPI, LangChain, OpenAI |
-| [`agent-runtime-frontend/`](agent-runtime-frontend) | A web app for chatting with the agent, with its tools listed in a sidebar | React 19, TypeScript, Vite |
+| [`agent-runtime-backend/`](agent-runtime-backend) | The agent itself: the reasoning loop, the file tools, accounts and saved conversations, a command-line interface and an HTTP API | Python 3.11+, FastAPI, LangChain, OpenAI, SQLAlchemy |
+| [`agent-runtime-frontend/`](agent-runtime-frontend) | A web app: sign-in, a chat that streams every step the agent takes, saved conversations, a folder picker and a tools sidebar | React 19, TypeScript, Vite |
 
 The backend works on its own (from the terminal, or as an API for your own
 apps). The frontend is an optional web interface on top of it.
@@ -32,41 +32,53 @@ The agent decides which tool to use for each step of a request:
 | `edit_file` | Changes part of an existing text file |
 | `search_files` | Searches the workspace's text files |
 
-Every tool is confined to one **workspace** folder (`data/workspace` by
-default). Paths that try to leave it are refused, whether they use `..`,
-absolute paths or symlinks.
+Every tool is confined to one **workspace** folder. By default that's
+`data/workspace`, and in the web app you can **browse for any other folder**
+on the server to work in. Paths that try to leave the chosen folder are
+refused, whether they use `..`, absolute paths or symlinks.
+
+With a database (PostgreSQL) configured, the runtime also:
+
+- **Saves every conversation**, so you can reopen, continue, rename or delete
+  it later, even after a restart.
+- **Records everything the agent did**: each step, tool call, result, token
+  count and cost, queryable with plain SQL.
+- **Signs people in.** Each person sees only their own conversations. The first
+  visitor creates the admin account.
 
 ---
 
 ## How the pieces fit
 
 ```
-  ┌───────────────────┐     ┌──────────────────────┐
-  │  Web app (React)  │     │  CLI                 │
-  │  localhost:5173   │     │  agent-runtime chat  │
-  └─────────┬─────────┘     │  agent-runtime ask   │
-            │ HTTP + SSE    └──────────┬───────────┘
-            ▼                          │ in-process
-  ┌───────────────────┐                │
-  │  HTTP API         │                │
-  │  (FastAPI) :8000  │                │
-  └─────────┬─────────┘                │
-            └───────────┬──────────────┘
-                        ▼
-            ┌───────────────────────┐   model calls   ┌────────────┐
-            │  Agent loop           │ ──────────────▶ │  OpenAI    │
-            │  think → act → observe│ ◀────────────── │  GPT-4o /  │
-            └───────────┬───────────┘                 │  GPT-5.2   │
-                        │ tool calls                  └────────────┘
-                        ▼
-            ┌───────────────────────┐
-            │  File tools           │ ───▶  workspace folder
-            └───────────────────────┘       (the only place it can touch)
+  ┌────────────────────────┐   ┌──────────────────────┐
+  │  Web app (React)       │   │  CLI                 │
+  │  sign-in, chat, history│   │  agent-runtime chat  │
+  │  localhost:5173        │   │  agent-runtime ask   │
+  └───────────┬────────────┘   └──────────┬───────────┘
+              │ HTTP + SSE                │ in-process
+              ▼                           │
+  ┌────────────────────────┐              │
+  │  HTTP API (FastAPI)    │              │
+  │  :8000                 │              │
+  └───────┬───────────┬────┘              │
+          │           └────────────┐      │
+          ▼                        ▼      ▼
+  ┌──────────────────┐   ┌───────────────────────┐   model calls   ┌────────────┐
+  │  PostgreSQL      │   │  Agent loop           │ ──────────────▶ │  OpenAI    │
+  │  (optional)      │   │  think → act → observe│ ◀────────────── │  GPT-4o /  │
+  │  accounts,       │   └───────────┬───────────┘                 │  GPT-5.2   │
+  │  conversations,  │               │ tool calls                  └────────────┘
+  │  activity log    │               ▼
+  └──────────────────┘   ┌───────────────────────┐
+                         │  File tools           │ ───▶  the chosen workspace folder
+                         └───────────────────────┘       (the only place it can touch)
 ```
 
 The CLI and the API share the same agent loop and tools, so they behave the
 same. The web app talks to the API, and streams each step of the agent's work
-live over Server-Sent Events.
+live over Server-Sent Events. Without a database, everything still works;
+conversations are then kept in memory and there's no sign-in.
 
 ---
 
@@ -77,6 +89,7 @@ live over Server-Sent Events.
 - **Python 3.11+** for the backend
 - **Node.js 20.19+** for the web app (optional)
 - An **OpenAI API key** ([get one here](https://platform.openai.com/api-keys))
+- **PostgreSQL** (optional), for saved conversations and sign-in
 
 ### 1. Set up the backend
 
@@ -91,14 +104,30 @@ copy .env.example .env               # Mac/Linux: cp .env.example .env
 Open `.env` and set `OPENAI_API_KEY`. Always run backend commands from inside
 `agent-runtime-backend/`, because that's where `.env` is read from.
 
-### 2. Use it from the terminal
+### 2. (Optional) Add a database
+
+Create an empty database, then point the backend at it in `.env`:
+
+```sql
+CREATE DATABASE agent_runtime;
+```
+
+```
+DATABASE_URL=postgresql://postgres:YOUR-PASSWORD@localhost:5432/agent_runtime
+```
+
+The tables are created when the server starts. From then on, the web app asks
+people to sign in, and the **first visitor creates the admin account**. Add
+more people with `agent-runtime users add NAME`.
+
+### 3. Use it from the terminal
 
 ```powershell
 agent-runtime chat                   # conversation
 agent-runtime ask "List my files"    # one question
 ```
 
-### 3. Or use the web app
+### 4. Or use the web app
 
 Run these in two terminals:
 
@@ -115,6 +144,8 @@ npm run dev                          # web app on http://localhost:5173
 Open **http://localhost:5173**. In development, the web app forwards its API
 calls to the backend, so no CORS setup is needed.
 
+![The sign-in page](agent-runtime-frontend/docs/login.png)
+
 ---
 
 ## Running with Docker
@@ -130,11 +161,19 @@ docker compose up --build -d      # build and start the API and the web app
 Then open **http://localhost:8080**. Stop with `docker compose down`; the
 workspace files are kept in a Docker volume.
 
+To save conversations in a PostgreSQL server on your computer, create a `.env`
+file **next to `docker-compose.yml`** (it's git-ignored). Inside a container,
+`localhost` is the container itself, so use `host.docker.internal`:
+
+```
+DOCKER_DATABASE_URL=postgresql://postgres:YOUR-PASSWORD@host.docker.internal:5432/agent_runtime
+```
+
 Step-by-step instructions for building and running each image, configuration,
 and troubleshooting:
 
 - [Backend Docker guide](agent-runtime-backend/DOCKER.md): the API image, the
-  CLI in a container, getting files in and out
+  database, accounts and the CLI in a container, getting files in and out
 - [Frontend Docker guide](agent-runtime-frontend/DOCKER.md): Compose, separate
   containers, or a backend elsewhere
 
@@ -144,7 +183,7 @@ and troubleshooting:
 
 | Mode | Start it with | Best for |
 |---|---|---|
-| **Web app** | `agent-runtime serve` + `npm run dev` | Everyday use: chat, attach files, download results |
+| **Web app** | `agent-runtime serve` + `npm run dev` | Everyday use: chat, attach files, pick a folder, reopen past conversations, download results |
 | **CLI** | `agent-runtime chat` / `agent-runtime ask` | Quick tasks and scripting. Answers go to stdout and activity to stderr, with exit codes, and `--json` output matches the API. |
 | **HTTP API** | `agent-runtime serve` | Building your own apps. Interactive docs are at http://127.0.0.1:8000/docs. |
 
@@ -152,9 +191,12 @@ Main API endpoints:
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /v1/chat` / `POST /v1/chat/stream` | Run the agent (whole answer, or streamed events) |
-| `GET /v1/tools` · `GET /v1/models` · `GET /health` | What it can do, models and prices, status |
+| `POST /v1/chat` · `POST /v1/chat/stream` | Run the agent (whole answer, or streamed events), optionally in a chosen folder |
+| `GET /v1/sessions` · `GET`/`PATCH`/`DELETE /v1/sessions/{id}` | Saved conversations, with every recorded step |
+| `POST /v1/auth/login` · `/setup` · `/logout` · `GET /v1/auth/me` | Sign-in |
+| `GET /v1/directories` | Browse the server's folders, to choose a workspace |
 | `POST /v1/files` · `GET`/`DELETE /v1/files/{path}` | Upload, download and delete workspace files |
+| `GET /v1/tools` · `GET /v1/models` · `GET /health` | What it can do, models and prices, status |
 
 ---
 
@@ -164,7 +206,7 @@ Main API endpoints:
 |---|---|
 | [Backend User Guide](agent-runtime-backend/USER_GUIDE.md) | Install and use the agent from the terminal, in plain language |
 | [Web App User Guide](agent-runtime-frontend/USER_GUIDE.md) | Use the web app, in plain language |
-| [Backend README](agent-runtime-backend/README.md) | Understand the architecture, the API, configuration, and adding tools |
+| [Backend README](agent-runtime-backend/README.md) | Understand the architecture, the API, the database, configuration, and adding tools |
 | [Frontend README](agent-runtime-frontend/README.md) | Develop, test and deploy the web app |
 | [Backend Docker guide](agent-runtime-backend/DOCKER.md) | Build and run the API as a Docker container |
 | [Frontend Docker guide](agent-runtime-frontend/DOCKER.md) | Build and run the web app in Docker, alone or with Compose |
@@ -174,7 +216,7 @@ Main API endpoints:
 ## Development
 
 Each part has its own checks, and both run fully offline. The tests never call
-OpenAI.
+OpenAI and need no database server (the backend tests use SQLite).
 
 ```powershell
 # Backend (in agent-runtime-backend/, venv active)
@@ -192,7 +234,7 @@ npm run build          # production build into dist/
 |---|---|---|
 | Language | Python 3.11+, mypy strict | TypeScript 6, strict |
 | Lint / format | ruff (incl. docstring and security rules) | ESLint (type-checked) / Prettier |
-| Tests | pytest: loop, tools, every file format, API, CLI | Vitest + Testing Library: SSE parser, state, API client, full-app integration |
+| Tests | pytest: loop, tools, every file format, API, CLI, database, sign-in | Vitest + Testing Library: SSE parser, state, API client, history replay, sign-in, full-app integration |
 
 ---
 
@@ -200,8 +242,9 @@ npm run build          # production build into dist/
 
 - **Backend:** environment variables, or `agent-runtime-backend/.env`. See
   [`.env.example`](agent-runtime-backend/.env.example) for the full list:
-  model and prices, workspace folder and read-only mode, file size limits,
-  step and time budgets, API key, and CORS.
+  model and prices, workspace folder, folder picker and read-only mode,
+  database and sign-in, file size limits, step and time budgets, API key, and
+  CORS.
 - **Frontend:** `VITE_API_BASE_URL` and `VITE_PROXY_TARGET`. See
   [`.env.example`](agent-runtime-frontend/.env.example). It needs no
   configuration when it runs next to the backend.
@@ -210,13 +253,18 @@ npm run build          # production build into dist/
 
 ## Security notes
 
-- **Keep `.env` private.** It holds your OpenAI key, and it's git-ignored.
-- **The workspace is the agent's only reach.** Choose `WORKSPACE_DIR`
-  deliberately, and set `WORKSPACE_READ_ONLY=true` to allow reading only.
-- **Before exposing the API beyond your own machine, set `API_KEY`.** Without
-  it, anyone who can reach the server can read, upload and delete workspace
-  files. The web app sends the key from its Settings panel. Use HTTPS when a key
-  is in use.
+- **Keep `.env` private.** It holds your OpenAI key and database password, and
+  it's git-ignored.
+- **Use sign-in when others can reach the app.** With a database, people sign
+  in and see only their own conversations. Passwords are hashed with scrypt,
+  and the database stores only a hash of each sign-in token.
+- **The folder picker can reach any folder the server can read**, unless you
+  set `WORKSPACE_BROWSE_ROOTS` to the folders you mean to share, or turn it off
+  with `WORKSPACE_SELECTABLE=false`. The Docker image limits it to `/data`.
+- **Without a database, set `API_KEY` before exposing the API beyond your own
+  machine.** Otherwise anyone who can reach the server can read, upload and
+  delete workspace files. Use HTTPS whenever passwords or keys travel over a
+  network.
 - **Files the agent reads are sent to OpenAI** for processing.
 
 For production deployment, see the Docker guides above, or the

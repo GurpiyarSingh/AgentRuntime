@@ -81,6 +81,13 @@ docker compose up --build -d
 The first run builds both images, which takes a few minutes. Then open
 **http://localhost:8080**.
 
+If the backend has a database (see
+[Storing sessions in PostgreSQL](../agent-runtime-backend/DOCKER.md#storing-sessions-in-postgresql)),
+the page opens on a sign-in screen, and the first visitor creates the admin
+account. Add more accounts with
+`docker compose exec backend agent-runtime users add NAME`. Without a
+database, the app opens directly in "Local mode".
+
 What Compose sets up:
 
 - **The backend**, with settings from `agent-runtime-backend\.env` and the

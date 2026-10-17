@@ -162,6 +162,20 @@ For a single question:
 docker exec agent-backend agent-runtime ask --workspace /data/workspace "What files are in the workspace?"
 ```
 
+### Manage web app accounts
+
+With a database configured, the web app asks people to sign in. The first
+visitor creates the admin account; add everyone else from inside the
+container (it asks for the new password twice):
+
+```powershell
+docker exec -it agent-backend agent-runtime users add maria
+docker exec agent-backend agent-runtime users list
+```
+
+With Docker Compose, use `docker compose exec backend` instead of
+`docker exec -it agent-backend`.
+
 ### Put files in and get files out
 
 **Option A: through the API.** This works with the volume from step 4:
@@ -322,7 +336,10 @@ web app once the API is healthy. Details are in the
   they must, set `API_KEY` first, and put HTTPS in front of it (e.g. a reverse
   proxy).
 - **The container runs as a non-root user**, and the agent can only touch
-  `/data/workspace`.
+  `/data/workspace`, or folders you mount under `/data` and choose in the web
+  app.
+- **With a database, everyone signs in** and sees only their own
+  conversations. Without one, set `API_KEY` before others can reach the API.
 - **Files the agent reads are sent to OpenAI** for processing.
 - **The folder picker stays inside `/data`** (`WORKSPACE_BROWSE_ROOTS`).
   Don't widen it to `/`: the agent could then read `/proc/self/environ`,

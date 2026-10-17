@@ -1,10 +1,9 @@
 # Agent Runtime: Frontend
 
-A React web UI for the [agent-runtime backend](../agent-runtime-backend). The
-**tools sidebar** on the left lists every tool the agent can call, each
-expandable to its full description and parameters. The **chat** on the right
-streams the agent's reply token by token and shows each tool call inline as it
-runs.
+A React web app for the [agent-runtime backend](../agent-runtime-backend). People
+sign in, pick the folder the agent works in, and chat with it: the reply
+streams in token by token, and every tool call appears inline as it runs.
+Past conversations are saved and can be reopened exactly as they were.
 
 ![The Agent Runtime web app](docs/screenshot.png)
 
@@ -13,23 +12,36 @@ runs.
 
 What it does:
 
-- **Live streaming** over `POST /v1/chat/stream`. Each tool call appears as a
-  card with its status, arguments, result and duration.
+- **Sign-in page.** An animated hero (the runtime at the centre, its
+  capabilities in orbit) and a sign-in card. On a brand-new server the card
+  creates the first (admin) account instead. Shown only when the backend has
+  sign-in enabled (it has a database); otherwise the app opens directly in
+  "Local mode".
+- **Live streaming** over `POST /v1/chat/stream`. Each tool call is a card
+  with its own icon and colour, a readable name, status, arguments, result and
+  duration. A status line says what the agent is doing ("Thinking…",
+  "Using read file…").
+- **Saved conversations** (`/v1/sessions`), listed in the sidebar to reopen,
+  rename or delete. A reopened conversation is rebuilt by replaying its
+  recorded events through the same reducer that rendered it live.
+- **Workspace picker.** Browse the server's folders and choose where the agent
+  works. The choice is remembered, and reopening a conversation returns to its
+  folder.
 - **File attachments**: picked files are uploaded to the workspace's
   `uploads/` folder and their paths are passed to the agent.
 - **Downloads**: files the agent creates with `write_file` get a download
   button.
-- **Conversations**: follow-up messages continue the same session. **New
-  chat** starts over, and **Stop** cancels a run. The backend then discards
-  the unfinished turn, so the conversation stays consistent.
 - **Model picker** from `GET /v1/models`, remembered per browser, with token
   usage and cost shown under each reply.
-- **Optional API key** (Settings), for servers started with `API_KEY`.
-- **Connection and read-only status**, with a retry banner when the server is
-  unreachable.
+- **Themes**: dark, light, or follow the system, switchable in the sidebar.
+- **Optional API key** (Settings, in Local mode), for servers started with
+  `API_KEY`.
 - **Responsive and accessible**: on narrow screens the sidebar becomes a
-  drawer. It has light and dark themes, works fully from the keyboard, and
-  announces finished replies to screen readers.
+  drawer and the sign-in hero becomes a banner. It works fully from the
+  keyboard, announces finished replies to screen readers, and respects
+  reduced-motion settings.
+
+![The sign-in page](docs/login.png)
 
 ## Quick start
 
@@ -91,8 +103,12 @@ server {
 and add the UI's origin to the backend's `CORS_ALLOW_ORIGINS`.
 
 Every `VITE_*` value is compiled into the JavaScript bundle and is visible to
-anyone. Never put the API key there. Users enter it in Settings, and it stays in
-their browser's localStorage. Use HTTPS whenever an API key is in use.
+anyone. Never put a secret there. The sign-in token, and the API key in Local
+mode, stay in the user's browser (localStorage); the token is sent as
+`Authorization: Bearer`. Use HTTPS whenever passwords or keys cross a network.
+
+The fonts (Inter and JetBrains Mono) are bundled from npm, so the app makes no
+third-party requests and works under the image's strict Content-Security-Policy.
 
 ## Project structure
 
@@ -100,21 +116,28 @@ their browser's localStorage. Use HTTPS whenever an API key is in use.
 src/
   api/
     types.ts          Wire types, mirroring the backend's schemas and events
-    client.ts         Typed API client: errors, API key, uploads, downloads, streaming
+    client.ts         Typed API client: errors, token and API key, sign-in,
+                      sessions, folders, uploads, downloads, streaming
     sse.ts            Server-Sent Events parser for fetch streams (EventSource can't POST)
     ApiContext.tsx    Provides the client to components
   chat/
     chatReducer.ts    Pure reducer: stream events -> conversation turns
-    useChat.ts        Sends messages, streams runs, stop / new chat
+    history.ts        Rebuilds a stored conversation by replaying its events
+    useChat.ts        Sends messages, streams runs, stop / new chat / load
     useAttachments.ts Uploads attached files into the workspace
   components/
-    sidebar/          Sidebar, ToolList, ToolItem (parameters), SettingsPanel
+    auth/             LoginPage (sign-in and first-run setup)
+    brand/            Logo, OrbitVisual (login hero), Splash
+    sidebar/          Sidebar, WorkspacePanel, DirectoryBrowser, SessionList,
+                      ToolList, ToolItem, SettingsPanel
     chat/             ChatPanel, MessageList, Message, ToolCallCard, Composer, Markdown
     Icon.tsx          Inline SVG icons
   hooks/useResource.ts  Load-once data hook with cancellation and reload
-  lib/                Formatting, storage, schema and tool-call helpers
-  styles/global.css   Design tokens (light and dark) and base styles
-  Root.tsx, App.tsx   Client and API key setup; the two-column shell
+  lib/                Formatting, storage, theme, tool icons, password strength,
+                      schema and tool-call helpers
+  styles/global.css   Design tokens (dark and light) and base styles
+  Root.tsx            The client, credentials, and what to show: splash, sign-in, or the app
+  App.tsx             The two-column shell and app-wide state
   test/               Test setup and a fake backend for integration tests
 ```
 
@@ -125,22 +148,31 @@ Design notes:
   points at everything that has to follow.
 - **Conversation logic is a pure reducer.** Every rule about how events become
   what the user sees (token merging, pairing tool results with their calls,
-  terminal states) is unit-tested without React.
+  terminal states) is unit-tested without React, and the same reducer replays
+  stored conversations.
+- **Signing out unmounts the app.** `Root` owns the credentials and chooses
+  between the splash, sign-in page and app, so no state from one account can
+  leak into the next. A token the server rejects sends you back to sign in.
 - **Model output is never rendered as HTML.** Markdown is rendered with
   `react-markdown`, which ignores raw HTML, and links open in a new tab
   without opener access.
-- **No UI framework.** CSS Modules with design tokens in `global.css`, so
-  there's no runtime styling cost and nothing to override.
+- **No UI framework.** CSS Modules with design tokens in `global.css` (the
+  brand gradient, tool tones, surfaces, shadows) for both themes, so there's
+  no runtime styling cost and nothing to override. The theme is a
+  `data-theme` attribute on `<html>`, applied before the first paint.
 
 ## Testing
 
-`npm test` runs four kinds of tests, all offline:
+`npm test` runs these tests, all offline:
 
 - **The SSE parser**, including events split at every possible chunk boundary,
   CRLF split across chunks, and UTF-8 characters split across byte chunks.
-- **The chat reducer.**
-- **The API client**: error mapping, API key header, streaming, URL encoding.
-- **Integration tests of the whole app** against a fake backend
-  (`src/test/fakeServer.ts`): tools in the sidebar, streaming replies with
-  tool cards and downloads, sessions, stop, attachments, errors and the
-  offline state.
+- **The chat reducer**, and **history replay**: stored events rebuild the same
+  turns, and unfinished runs are closed correctly.
+- **The API client**: error mapping, auth headers, streaming, URL encoding.
+- **Sign-in** against a fake backend (`src/test/fakeServer.ts`): first-run
+  setup, wrong passwords, signing out, an expired token, an unreachable
+  server, and servers without sign-in.
+- **Integration tests of the whole app**: tools in the sidebar, streaming
+  replies with tool cards and downloads, sessions, stop, attachments, choosing
+  a folder, reopening and deleting conversations, errors and the offline state.
