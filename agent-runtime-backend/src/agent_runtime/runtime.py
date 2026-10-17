@@ -11,6 +11,7 @@ from agent_runtime.agent.loop import AgentLoop
 from agent_runtime.agent.openai import OpenAIModel
 from agent_runtime.agent.protocols import ChatModel
 from agent_runtime.config import Settings
+from agent_runtime.files.directories import DirectoryPolicy
 from agent_runtime.files.workspace import Workspace
 from agent_runtime.tools.file_tools import default_tools
 from agent_runtime.tools.registry import ToolRegistry
@@ -36,6 +37,13 @@ This workspace is READ-ONLY: you can list, read, search and look at files, but y
 def build_workspace(settings: Settings) -> Workspace:
     """Open (creating if needed) the workspace directory from settings."""
     return Workspace(settings.workspace_dir)
+
+
+def build_directory_policy(settings: Settings, workspace: Workspace) -> DirectoryPolicy:
+    """Decide which other directories clients may point the agent at."""
+    return DirectoryPolicy(
+        workspace, selectable=settings.workspace_selectable, roots=settings.browse_roots
+    )
 
 
 def build_tools(settings: Settings, workspace: Workspace) -> ToolRegistry:
@@ -67,22 +75,37 @@ class AgentFactory:
         self._settings = settings
         self._tools = tools
 
-    def __call__(self, model_id: str | None = None, model: ChatModel | None = None) -> AgentLoop:
+    def __call__(
+        self,
+        model_id: str | None = None,
+        model: ChatModel | None = None,
+        workspace: Workspace | None = None,
+    ) -> AgentLoop:
         """Build a loop on `model`, or on an OpenAI model for `model_id`.
 
         Args:
             model_id: Catalog id for the OpenAI model; the default if omitted.
             model: A ready `ChatModel` to use instead (tests pass a fake).
+            workspace: A directory the request chose; the shared tools (bound
+                to the configured workspace) are used if omitted.
 
         Raises:
             ModelConfigurationError: No OpenAI API key is configured.
         """
+        tools = self._tools if workspace is None else build_tools(self._settings, workspace)
         return AgentLoop(
             settings=self._settings,
-            tools=self._tools,
-            model=model or OpenAIModel(self._settings, self._tools, model_id=model_id),
+            tools=tools,
+            model=model or OpenAIModel(self._settings, tools, model_id=model_id),
             system_prompt=system_prompt(self._settings),
         )
 
 
-__all__ = ["SYSTEM_PROMPT", "AgentFactory", "build_tools", "build_workspace", "system_prompt"]
+__all__ = [
+    "SYSTEM_PROMPT",
+    "AgentFactory",
+    "build_directory_policy",
+    "build_tools",
+    "build_workspace",
+    "system_prompt",
+]

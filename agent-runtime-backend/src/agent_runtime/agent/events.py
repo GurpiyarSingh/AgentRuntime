@@ -117,6 +117,14 @@ AgentEvent = (
 """Any event the loop can emit."""
 
 
+def event_name(event: object) -> str:
+    """The SSE event name: the class name in snake_case (`ToolCallResult` -> `tool_call_result`)."""
+    name = type(event).__name__
+    return "".join(
+        f"_{ch.lower()}" if ch.isupper() and i else ch.lower() for i, ch in enumerate(name)
+    )
+
+
 __all__ = [
     "AgentEvent",
     "FinalAnswer",
@@ -127,4 +135,5 @@ __all__ = [
     "ToolCallRequested",
     "ToolCallResult",
     "UsageUpdated",
+    "event_name",
 ]

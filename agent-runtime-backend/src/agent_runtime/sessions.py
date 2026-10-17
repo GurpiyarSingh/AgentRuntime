@@ -1,9 +1,13 @@
-"""An in-memory, TTL-bounded store for multi-turn conversation history.
+"""Where conversations live between requests, and who records what runs did.
 
-Deliberately simple: a dict behind an asyncio lock, which is right for a
-single-process deployment. Running several workers needs a shared store
-(Redis, a database) behind the same two methods, `get_history` and
-`append`; nothing else in the runtime touches sessions.
+`ConversationStore` is the seam: the API only calls `get_history`,
+`append` and `start_run`. Two implementations exist:
+
+- `SessionStore` (here): an in-memory, TTL-bounded dict behind an asyncio
+  lock. Right for a single process and for tests; it forgets everything on
+  restart and records no activity.
+- `agent_runtime.storage.DatabaseStore`: PostgreSQL (or SQLite), used when
+  `DATABASE_URL` is set. Keeps every session, run, event and tool call.
 """
 
 from __future__ import annotations
@@ -11,8 +15,68 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass, field
+from typing import Any, Protocol
 
-from agent_runtime.agent.messages import Message, SystemMessage
+from agent_runtime.agent.events import AgentEvent
+from agent_runtime.agent.messages import Message, SystemMessage, ToolMessage
+from agent_runtime.auth import Principal
+
+
+@dataclass(frozen=True, slots=True)
+class RunContext:
+    """Who started a run, and with what, as known before it begins."""
+
+    session_id: str
+    run_id: str
+    user_message: str
+    model: str
+    workspace: str | None = None
+    client_host: str | None = None
+    user_agent: str | None = None
+    user_id: str | None = None
+    """The signed-in owner; a new session is created as theirs."""
+
+
+class RunRecorder(Protocol):
+    """Receives every event of one run, as it happens."""
+
+    async def observe(self, event: AgentEvent, payload: dict[str, Any]) -> None:
+        """Record `event`; `payload` is exactly what clients were sent for it."""
+
+    async def finish(self) -> None:
+        """The run is over (answered, failed, or abandoned by the client)."""
+
+
+class ConversationStore(Protocol):
+    """Conversation history plus, optionally, an activity log of every run."""
+
+    @property
+    def keeps_history(self) -> bool:
+        """True when sessions outlive the process and can be listed later."""
+
+    async def get_history(self, session_id: str) -> list[Message]:
+        """The transcript to continue `session_id` with; empty if unknown."""
+
+    async def append(
+        self, session_id: str, new_messages: list[Message], run_id: str | None = None
+    ) -> None:
+        """Add one whole turn's messages to the session."""
+
+    async def start_run(self, context: RunContext) -> RunRecorder:
+        """Begin recording a run; the recorder is told every event."""
+
+    async def can_continue(self, session_id: str, viewer: Principal) -> bool:
+        """False when the session exists but belongs to someone else."""
+
+
+class NullRunRecorder:
+    """Records nothing: activity logging is off without a database."""
+
+    async def observe(self, event: AgentEvent, payload: dict[str, Any]) -> None:
+        """Ignore `event`."""
+
+    async def finish(self) -> None:
+        """Nothing to close."""
 
 
 @dataclass(slots=True)
@@ -21,7 +85,7 @@ class _Session:
     last_used: float = field(default_factory=time.monotonic)
 
 
-def _trim(messages: list[Message], max_messages: int) -> list[Message]:
+def trim_history(messages: list[Message], max_messages: int) -> list[Message]:
     """Drop the oldest messages, but keep a leading `SystemMessage` if present.
 
     Without this, a long conversation would eventually evict the system
@@ -30,9 +94,13 @@ def _trim(messages: list[Message], max_messages: int) -> list[Message]:
     overflow = len(messages) - max_messages
     if overflow <= 0:
         return messages
-    if isinstance(messages[0], SystemMessage):
-        return [messages[0], *messages[1 + overflow :]]
-    return messages[overflow:]
+    head = [messages[0]] if isinstance(messages[0], SystemMessage) else []
+    tail = messages[len(head) + overflow :]
+    # A cut can land between an assistant turn and its tool results; the
+    # model rejects tool results whose request is gone, so drop them too.
+    while tail and isinstance(tail[0], ToolMessage):
+        tail = tail[1:]
+    return [*head, *tail]
 
 
 class SessionStore:
@@ -62,13 +130,28 @@ class SessionStore:
             session = self._sessions.get(session_id)
             return list(session.messages) if session else []
 
-    async def append(self, session_id: str, new_messages: list[Message]) -> None:
+    @property
+    def keeps_history(self) -> bool:
+        """In-memory sessions vanish on restart, so there is no history to browse."""
+        return False
+
+    async def start_run(self, context: RunContext) -> RunRecorder:
+        """No activity log in memory."""
+        return NullRunRecorder()
+
+    async def can_continue(self, session_id: str, viewer: Principal) -> bool:
+        """In-memory sessions have no owners (sign-in needs a database)."""
+        return True
+
+    async def append(
+        self, session_id: str, new_messages: list[Message], run_id: str | None = None
+    ) -> None:
         """Add messages to a session, creating it if needed, and refresh its TTL."""
         async with self._lock:
             self._evict_expired()
             session = self._sessions.setdefault(session_id, _Session())
             session.messages.extend(new_messages)
-            session.messages = _trim(session.messages, self._max_messages)
+            session.messages = trim_history(session.messages, self._max_messages)
             session.last_used = time.monotonic()
 
     def _evict_expired(self) -> None:
@@ -79,4 +162,11 @@ class SessionStore:
             del self._sessions[sid]
 
 
-__all__ = ["SessionStore"]
+__all__ = [
+    "ConversationStore",
+    "NullRunRecorder",
+    "RunContext",
+    "RunRecorder",
+    "SessionStore",
+    "trim_history",
+]

@@ -46,3 +46,8 @@ def test_log_level_is_normalised_and_validated() -> None:
     assert Settings(_env_file=None, log_level="debug").log_level == "DEBUG"  # type: ignore[call-arg]
     with pytest.raises(ValueError, match="LOG_LEVEL"):
         Settings(_env_file=None, log_level="verbose")  # type: ignore[call-arg]
+
+
+def test_blank_database_url_means_no_database() -> None:
+    settings = Settings(_env_file=None, database_url="  ")  # type: ignore[call-arg]
+    assert settings.database_url is None

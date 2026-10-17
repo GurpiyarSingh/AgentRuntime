@@ -1,59 +1,177 @@
 .scroller {
+  position: relative;
+  z-index: 1;
   flex: 1;
-  min-height: 0;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  scroll-behavior: smooth;
 }
 
 .turns {
   display: flex;
   flex-direction: column;
-  gap: 22px;
-  max-width: 820px;
+  gap: 28px;
+  width: min(var(--content-width), 100%);
   margin: 0 auto;
-  padding: 24px 20px 32px;
+  padding: 32px 24px 24px;
 }
 
+/* --- empty state ------------------------------------------------------------ */
+
 .empty {
-  max-width: 620px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(760px, 100%);
   margin: 0 auto;
-  padding: 12vh 20px 24px;
+  padding: clamp(32px, 9vh, 96px) 24px 32px;
+  text-align: center;
+  animation: fade-up 500ms var(--ease-out) both;
+}
+
+.emblem {
+  position: relative;
+  display: grid;
+  place-items: center;
+  margin-bottom: 24px;
+}
+
+.emblem svg {
+  position: relative;
+  border-radius: 18px;
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 10%),
+    0 16px 40px -12px rgb(124 92 255 / 70%);
+  animation: float 6s ease-in-out infinite;
+}
+
+.emblemGlow {
+  position: absolute;
+  width: 160px;
+  height: 160px;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--brand-2) 40%, transparent),
+    transparent 65%
+  );
+  filter: blur(18px);
 }
 
 .emptyTitle {
-  margin: 0 0 8px;
-  font-size: 1.4rem;
-  font-weight: 650;
+  margin: 0;
+  text-wrap: balance;
+  font-size: clamp(1.6rem, 3vw, 2.15rem);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
 }
 
 .emptyText {
-  margin: 0 0 20px;
+  max-width: 560px;
+  text-wrap: balance;
+  margin: 14px 0 28px;
+  font-size: 0.95rem;
   color: var(--text-muted);
 }
 
 .suggestions {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .suggestion {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  align-items: center;
   width: 100%;
   height: 100%;
-  padding: 12px 14px;
-  font-size: 0.88rem;
-  color: var(--text);
+  padding: 14px 40px 14px 14px;
   text-align: left;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  transition: border-color 120ms ease;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
 }
 
 .suggestion:hover {
-  border-color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  box-shadow: var(--glow);
+  transform: translateY(-2px);
+}
+
+.suggestionIcon {
+  --tone: var(--tone-violet);
+
+  display: grid;
+  grid-row: span 2;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 13%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tone) 22%, transparent);
+  border-radius: 11px;
+}
+
+.suggestionIcon[data-tone='blue'] {
+  --tone: var(--tone-blue);
+}
+
+.suggestionIcon[data-tone='amber'] {
+  --tone: var(--tone-amber);
+}
+
+.suggestionIcon[data-tone='green'] {
+  --tone: var(--tone-green);
+}
+
+.suggestionTitle {
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.suggestionPrompt {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--text-subtle);
+}
+
+.suggestionArrow {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  color: var(--text-subtle);
+  opacity: 0;
+  transform: translate(-4px, -50%);
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.suggestion:hover .suggestionArrow {
+  color: var(--accent);
+  opacity: 1;
+  transform: translate(0, -50%);
+}
+
+@keyframes float {
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@media (max-width: 640px) {
+  .suggestions {
+    grid-template-columns: 1fr;
+  }
+
+  .turns {
+    padding: 20px 14px;
+  }
 }

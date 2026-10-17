@@ -2,10 +2,17 @@
   display: flex;
   height: 100%;
   overflow: hidden;
+  animation: fade-in 300ms ease both;
 }
 
 .scrim {
   display: none;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
 }
 
 @media (max-width: 860px) {
@@ -14,6 +21,8 @@
     inset: 0;
     z-index: 10;
     display: block;
-    background: rgb(0 0 0 / 35%);
+    background: rgb(4 5 10 / 55%);
+    backdrop-filter: blur(3px);
+    animation: fade-in 200ms ease;
   }
 }

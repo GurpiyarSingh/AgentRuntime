@@ -37,9 +37,19 @@ server {
         return 200 "ok\n";
     }
 
+    # Look up the backend's name when a request comes in, not once at startup:
+    # with a fixed name in proxy_pass, nginx refuses to start while the backend
+    # can't be resolved (e.g. the image run without Compose). Now that case is
+    # a 502 on API calls instead. NGINX_LOCAL_RESOLVERS is filled in by the
+    # base image from /etc/resolv.conf (Docker's DNS on a Compose network).
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=30s;
+
     # The API, proxied so the browser sees a single origin (no CORS).
     location ~ ^/(v1|health)(/|$) {
-        proxy_pass ${BACKEND_URL};
+        # A variable makes nginx resolve per request; with no path after the
+        # host, the original request URI is passed through unchanged.
+        set $backend_url ${BACKEND_URL};
+        proxy_pass $backend_url;
         proxy_http_version 1.1;
         proxy_set_header Connection "";
         proxy_set_header Host $host;

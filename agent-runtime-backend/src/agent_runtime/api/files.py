@@ -3,7 +3,9 @@
 A client uploads the inputs it wants the agent to work on, asks the agent
 about them by path, and downloads whatever the agent created. Every path
 goes through `Workspace.resolve`, exactly like the agent's own tools, so
-the API can't be used to reach outside the workspace either.
+the API can't be used to reach outside the workspace either. Every endpoint
+takes an optional `?workspace=` naming the directory a chat chose (see
+`DirectoryPolicy`); without it, the server's own workspace is used.
 
 These endpoints are plain `def`s on purpose: FastAPI runs them in its
 threadpool, so blocking disk I/O never stalls a streaming chat.
@@ -16,7 +18,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 from fastapi.responses import FileResponse
 
-from agent_runtime.api.deps import get_settings, get_workspace, require_api_key
+from agent_runtime.api.deps import get_request_workspace, get_settings, require_api_key
 from agent_runtime.api.schemas import FilesResponse, FileView
 from agent_runtime.config import Settings
 from agent_runtime.files.workspace import Workspace, WorkspaceError, atomic_target
@@ -41,7 +43,9 @@ def _existing_file(workspace: Workspace, path: str) -> Path:
 
 
 @router.get("", response_model=FilesResponse)
-def list_files(path: str = ".", workspace: Workspace = Depends(get_workspace)) -> FilesResponse:
+def list_files(
+    path: str = ".", workspace: Workspace = Depends(get_request_workspace)
+) -> FilesResponse:
     """Every file under `path` (default: the whole workspace), recursively."""
     directory = _resolve(workspace, path)
     if not directory.is_dir():
@@ -65,7 +69,7 @@ def upload_file(
         "omit to store it at the workspace root.",
     ),
     overwrite: bool = Form(default=False),
-    workspace: Workspace = Depends(get_workspace),
+    workspace: Workspace = Depends(get_request_workspace),
     settings: Settings = Depends(get_settings),
 ) -> FileView:
     """Put a file into the workspace so the agent can work on it."""
@@ -105,14 +109,16 @@ def upload_file(
 
 
 @router.get("/{file_path:path}", response_class=FileResponse)
-def download_file(file_path: str, workspace: Workspace = Depends(get_workspace)) -> FileResponse:
+def download_file(
+    file_path: str, workspace: Workspace = Depends(get_request_workspace)
+) -> FileResponse:
     """Download a file from the workspace, e.g. one the agent created."""
     resolved = _existing_file(workspace, file_path)
     return FileResponse(resolved, filename=resolved.name)
 
 
 @router.delete("/{file_path:path}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_file(file_path: str, workspace: Workspace = Depends(get_workspace)) -> Response:
+def delete_file(file_path: str, workspace: Workspace = Depends(get_request_workspace)) -> Response:
     """Remove a file from the workspace."""
     _existing_file(workspace, file_path).unlink()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

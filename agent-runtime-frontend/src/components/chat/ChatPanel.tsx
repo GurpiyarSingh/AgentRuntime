@@ -19,6 +19,8 @@ interface ChatPanelProps {
   models: Resource<ModelsResponse>;
   model: string;
   onModelChange: (model: string) => void;
+  /** The open conversation's stored title, if it has one. */
+  title?: string | undefined;
   onOpenSidebar: () => void;
 }
 
@@ -44,6 +46,7 @@ export function ChatPanel({
   models,
   model,
   onModelChange,
+  title,
   onOpenSidebar,
 }: ChatPanelProps) {
   const [draft, setDraft] = useState('');
@@ -67,10 +70,21 @@ export function ChatPanel({
         >
           <Icon name="menu" label="Show tools" />
         </button>
-        <h2 className={styles.title}>Chat</h2>
+        <div className={styles.heading}>
+          <h2 className={styles.title}>
+            {chat.state.turns.length === 0 ? 'New conversation' : title || 'Conversation'}
+          </h2>
+          {chat.state.busy && (
+            <span className={styles.working}>
+              <span className={styles.workingDot} />
+              Working
+            </span>
+          )}
+        </div>
 
         <label className={styles.modelLabel}>
           <span className="sr-only">Model</span>
+          <Icon name="cpu" size={15} className={styles.modelIcon} />
           <select
             className={styles.model}
             value={model}
@@ -93,11 +107,13 @@ export function ChatPanel({
               <option value={model}>{model || 'Loading models…'}</option>
             )}
           </select>
+          <Icon name="chevronDown" size={14} className={styles.modelChevron} />
         </label>
 
         <button
           type="button"
           className={styles.newChat}
+          aria-label="New chat"
           onClick={() => {
             chat.reset();
             attachments.clear();
@@ -105,7 +121,7 @@ export function ChatPanel({
           disabled={chat.state.turns.length === 0}
         >
           <Icon name="plus" size={16} />
-          New chat
+          <span className={styles.newChatText}>New chat</span>
         </button>
       </header>
 
@@ -123,6 +139,7 @@ export function ChatPanel({
         </div>
       )}
 
+      <div className={styles.backdrop} aria-hidden="true" />
       <MessageList turns={chat.state.turns} onPickSuggestion={setDraft} />
 
       <Composer

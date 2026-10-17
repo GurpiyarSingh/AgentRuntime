@@ -60,7 +60,9 @@ export type ChatAction =
   | { type: 'failed'; message: string }
   | { type: 'stopped' }
   | { type: 'streamEnded' }
-  | { type: 'reset' };
+  | { type: 'reset' }
+  /** Show a stored conversation, to read or to continue. */
+  | { type: 'load'; sessionId: string; turns: Turn[] };
 
 export const initialChatState: ChatState = { turns: [], sessionId: null, busy: false };
 
@@ -234,5 +236,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       };
     case 'reset':
       return initialChatState;
+    case 'load':
+      return { turns: action.turns, sessionId: action.sessionId, busy: false };
   }
 }

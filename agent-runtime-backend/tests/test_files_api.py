@@ -100,3 +100,21 @@ def test_paths_outside_the_workspace_are_refused(
 
 def test_listing_a_missing_directory_is_404(client: TestClient) -> None:
     assert client.get("/v1/files", params={"path": "nope"}).status_code == 404
+
+
+def test_files_api_uses_the_chosen_workspace(
+    client: TestClient, root: Path, tmp_path: Path
+) -> None:
+    chosen = tmp_path / "chosen"
+    chosen.mkdir()
+    params = {"workspace": str(chosen)}
+
+    uploaded = client.post(
+        "/v1/files", params=params, files={"file": ("a.txt", b"hey", "text/plain")}
+    )
+
+    assert uploaded.status_code == 201
+    assert (chosen / "a.txt").read_bytes() == b"hey"
+    assert not (root / "a.txt").exists()
+    assert client.get("/v1/files/a.txt", params=params).content == b"hey"
+    assert client.get("/v1/files/a.txt").status_code == 404

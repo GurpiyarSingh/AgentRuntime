@@ -12,6 +12,7 @@ import type { ToolCall } from '../../chat/chatReducer';
 import { saveBlob } from '../../lib/download';
 import { formatDuration } from '../../lib/format';
 import { createdFile, primaryArgument } from '../../lib/toolCalls';
+import { toolMeta } from '../../lib/toolMeta';
 import { Icon, type IconName } from '../Icon';
 import styles from './ToolCallCard.module.css';
 
@@ -58,11 +59,12 @@ export function ToolCallCard({ call }: { call: ToolCall }) {
   const [open, setOpen] = useState(false);
   const bodyId = useId();
   const status = STATUS[call.status];
+  const meta = toolMeta(call.toolName);
   const target = primaryArgument(call.arguments);
   const file = createdFile(call);
 
   return (
-    <div className={`${styles.card ?? ''} ${styles[call.status] ?? ''}`}>
+    <div className={`${styles.card ?? ''} ${styles[call.status] ?? ''}`} data-tone={meta.tone}>
       <div className={styles.row}>
         <button
           type="button"
@@ -73,18 +75,24 @@ export function ToolCallCard({ call }: { call: ToolCall }) {
             setOpen((value) => !value);
           }}
         >
-          <Icon
-            name={status.icon}
-            size={15}
-            label={status.label}
-            className={call.status === 'running' ? styles.spin : styles.statusIcon}
-          />
+          <span className={styles.chip}>
+            <Icon name={meta.icon} size={15} />
+          </span>
+          <span className={styles.label}>{meta.label}</span>
           <span className={styles.name}>{call.toolName}</span>
           {target && <span className={styles.target}>{target}</span>}
           <span className={styles.spacer} />
           {call.durationS !== undefined && (
             <span className={styles.duration}>{formatDuration(call.durationS)}</span>
           )}
+          <span className={styles.status}>
+            <Icon
+              name={status.icon}
+              size={13}
+              label={status.label}
+              className={call.status === 'running' ? styles.spin : undefined}
+            />
+          </span>
           <Icon name="chevron" size={14} className={open ? styles.chevronOpen : styles.chevron} />
         </button>
         {file && <DownloadButton path={file} />}
@@ -92,16 +100,17 @@ export function ToolCallCard({ call }: { call: ToolCall }) {
 
       {open && (
         <div id={bodyId} className={styles.body}>
-          <div className={styles.label}>Arguments</div>
+          <div className={styles.section}>Arguments</div>
           <pre className={styles.pre}>{JSON.stringify(call.arguments, null, 2)}</pre>
           {call.content !== undefined && (
             <>
-              <div className={styles.label}>{call.status === 'error' ? 'Error' : 'Result'}</div>
+              <div className={styles.section}>{call.status === 'error' ? 'Error' : 'Result'}</div>
               <pre className={styles.pre}>{call.content}</pre>
             </>
           )}
           {call.imageCount > 0 && (
             <p className={styles.note}>
+              <Icon name="image" size={13} />
               {call.imageCount === 1 ? 'An image was' : `${call.imageCount} images were`} shown to
               the agent.
             </p>

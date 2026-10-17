@@ -4,7 +4,14 @@
  * request so tests can assert on what the UI sent.
  */
 
-import type { AgentEvent, Health, ModelsResponse, Tool } from '../api/types';
+import type {
+  AgentEvent,
+  DirectoryListing,
+  Health,
+  ModelsResponse,
+  SessionDetail,
+  Tool,
+} from '../api/types';
 
 export const TOOLS: Tool[] = [
   {
@@ -39,8 +46,23 @@ export const HEALTH: Health = {
   environment: 'local',
   model: 'gpt-4o',
   tools: TOOLS.map((tool) => tool.name),
-  workspace: { read_only: false, path: '/tmp/ws' },
+  workspace: { read_only: false, path: '/tmp/ws', selectable: true },
 };
+
+/** A tiny server disk: `/` holds `/tmp`, which holds `/tmp/ws` and `/tmp/project`. */
+export function directoryListing(path: string | null): DirectoryListing {
+  const children: Record<string, string[]> = {
+    '/': ['/tmp'],
+    '/tmp': ['/tmp/project', '/tmp/ws'],
+  };
+  const at = path ?? '';
+  const directories = (path === null ? ['/'] : (children[at] ?? [])).map((dir) => ({
+    name: dir === '/' ? '/' : (dir.split('/').pop() ?? dir),
+    path: dir,
+  }));
+  const parent = path === null || path === '/' ? null : path.slice(0, path.lastIndexOf('/')) || '/';
+  return { path, parent, directories, truncated: false };
+}
 
 export const MODELS: ModelsResponse = {
   default: 'gpt-4o',
@@ -91,6 +113,13 @@ export interface RecordedRequest {
 export interface FakeServerOptions {
   /** One entry per chat request: events to stream, or 'hang' to never finish. */
   chats?: (AgentEvent[] | { hangAfter: AgentEvent[] } | { status: number; detail: string })[];
+  /**
+   * Sign-in: the server's accounts (username -> password). Empty means the
+   * first visitor must create the admin. Omitted means sign-in is off.
+   */
+  accounts?: Record<string, string>;
+  /** Stored sessions; when given, health reports `history: true`. */
+  sessions?: SessionDetail[];
   /** Respond to /v1/tools with this status instead of the tool list. */
   toolsStatus?: number;
   offline?: boolean;
@@ -99,6 +128,22 @@ export interface FakeServerOptions {
 export function createFakeServer(options: FakeServerOptions = {}) {
   const requests: RecordedRequest[] = [];
   const chats = [...(options.chats ?? [])];
+  const sessions = options.sessions ? [...options.sessions] : null;
+  const accounts = options.accounts ? { ...options.accounts } : null;
+  const tokens = new Map<string, string>(); // token -> username
+  const userFor = (username: string) => ({
+    id: `usr_${username}`,
+    username,
+    display_name: username === 'ada' ? 'Ada Lovelace' : '',
+    is_admin: true,
+    created_at: '',
+    last_login_at: null,
+  });
+  const signIn = (username: string) => {
+    const token = `tok_${username}_${tokens.size}`;
+    tokens.set(token, username);
+    return { token, user: userFor(username) };
+  };
 
   const fetch: typeof globalThis.fetch = async (input, init = {}) => {
     const url = input instanceof Request ? input.url : input.toString();
@@ -114,21 +159,66 @@ export function createFakeServer(options: FakeServerOptions = {}) {
         headers: { 'Content-Type': 'application/json' },
       });
 
-    if (url.endsWith('/health')) return json(HEALTH);
+    if (url.includes('/v1/auth/')) {
+      const route = url.slice(url.indexOf('/v1/auth/') + '/v1/auth/'.length);
+      if (!accounts) return json({ detail: 'Not Found' }, 404);
+      const credentials = body as { username: string; password: string } | undefined;
+      const bearer = new Headers(init.headers).get('Authorization')?.replace('Bearer ', '') ?? '';
+      if (route === 'status') {
+        return json({ enabled: true, setup_required: Object.keys(accounts).length === 0 });
+      }
+      if (route === 'setup' && credentials) {
+        accounts[credentials.username] = credentials.password;
+        return json(signIn(credentials.username), 201);
+      }
+      if (route === 'login' && credentials) {
+        return accounts[credentials.username] === credentials.password
+          ? json(signIn(credentials.username))
+          : json({ detail: 'Wrong username or password.' }, 401);
+      }
+      if (route === 'logout') {
+        tokens.delete(bearer);
+        return new Response(null, { status: 204 });
+      }
+      if (route === 'me') {
+        const username = tokens.get(bearer);
+        return username ? json(userFor(username)) : json({ detail: 'Sign in to continue.' }, 401);
+      }
+    }
+    if (url.endsWith('/health')) return json({ ...HEALTH, history: sessions !== null });
+    if (sessions !== null && url.includes('/v1/sessions')) {
+      const id = decodeURIComponent(new URL(url, 'http://x').pathname.split('/')[3] ?? '');
+      if (!id) return json({ sessions: sessions.map(({ runs: _runs, ...summary }) => summary) });
+      const index = sessions.findIndex((session) => session.id === id);
+      if (index === -1) return json({ detail: 'Not found' }, 404);
+      if (method === 'DELETE') {
+        sessions.splice(index, 1);
+        return new Response(null, { status: 204 });
+      }
+      if (method === 'PATCH') {
+        const session = sessions[index] as SessionDetail;
+        session.title = (body as { title: string }).title;
+        return json(session);
+      }
+      return json(sessions[index]);
+    }
     if (url.endsWith('/v1/models')) return json(MODELS);
     if (url.endsWith('/v1/tools')) {
       return options.toolsStatus
         ? json({ detail: 'Invalid or missing API key' }, options.toolsStatus)
         : json({ tools: TOOLS });
     }
-    if (url.endsWith('/v1/files') && method === 'POST') {
+    if (url.includes('/v1/directories')) {
+      return json(directoryListing(new URL(url, 'http://x').searchParams.get('path')));
+    }
+    if (url.includes('/v1/files') && !url.includes('/v1/files/') && method === 'POST') {
       const file = (init.body as FormData).get('file') as File;
       return json({ path: `uploads/${file.name}`, size: file.size, modified: '' }, 201);
     }
     if (url.includes('/v1/files/')) {
       return new Response(new Blob(['file-bytes']), { status: 200 });
     }
-    if (url.endsWith('/v1/chat/stream')) {
+    if (url.includes('/v1/chat/stream')) {
       const script = chats.shift();
       if (!script) throw new Error('fake server: no scripted chat left');
       if ('status' in script) return json({ detail: script.detail }, script.status);

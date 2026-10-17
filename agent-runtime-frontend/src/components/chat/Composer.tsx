@@ -116,7 +116,11 @@ export function Composer({
           className={styles.textarea}
           rows={1}
           value={value}
-          placeholder={disabled ? 'The server is unavailable' : 'Ask the agent to do something…'}
+          placeholder={
+            disabled
+              ? 'The server is unavailable'
+              : 'Ask the agent to read, write, or build anything…'
+          }
           disabled={disabled}
           onChange={(event) => {
             onChange(event.target.value);
@@ -126,17 +130,17 @@ export function Composer({
 
         {busy ? (
           <button type="button" className={styles.stop} onClick={onStop} title="Stop">
-            <Icon name="stop" label="Stop the agent" />
+            <Icon name="stop" size={16} label="Stop the agent" />
           </button>
         ) : (
           <button type="submit" className={styles.send} disabled={!canSend} title="Send">
-            <Icon name="send" label="Send message" />
+            <Icon name="arrowUp" size={18} strokeWidth={2.4} label="Send message" />
           </button>
         )}
       </div>
       <p className={styles.hint}>
-        Enter to send · Shift+Enter for a new line · attachments go to the workspace&apos;s{' '}
-        <code>uploads/</code> folder
+        <kbd>Enter</kbd> to send · <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line · attachments go
+        to <code>uploads/</code> in the workspace
       </p>
     </form>
   );

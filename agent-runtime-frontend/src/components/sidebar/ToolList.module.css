@@ -10,31 +10,42 @@
 .skeleton {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   margin: 0;
-  padding: 8px 10px;
+  padding: 4px 8px;
   list-style: none;
 }
 
 .skeleton li {
-  height: 38px;
-  background: var(--surface-muted);
-  border-radius: var(--radius-sm);
-  animation: pulse 1.4s ease-in-out infinite;
+  height: 40px;
+  background: linear-gradient(
+    90deg,
+    var(--surface) 0%,
+    var(--surface-hover) 50%,
+    var(--surface) 100%
+  );
+  background-size: 200% 100%;
+  border-radius: var(--radius);
+  animation: shimmer 1.4s ease-in-out infinite;
 }
 
-@keyframes pulse {
-  50% {
-    opacity: 0.5;
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: -100% 0;
   }
 }
 
 .error {
-  margin: 4px 10px;
+  margin: 4px 6px;
   padding: 10px 12px;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   color: var(--danger);
   background: var(--danger-soft);
+  border: 1px solid color-mix(in srgb, var(--danger) 20%, transparent);
   border-radius: var(--radius);
 }
 
@@ -43,15 +54,17 @@
 }
 
 .retry {
-  padding: 3px 10px;
-  font-size: 0.8rem;
+  padding: 3px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
 }
 
 .empty {
-  margin: 4px 10px;
-  font-size: 0.85rem;
+  margin: 4px 8px;
+  font-size: 0.82rem;
   color: var(--text-subtle);
 }

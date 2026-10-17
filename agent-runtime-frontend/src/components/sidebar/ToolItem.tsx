@@ -5,6 +5,7 @@ import { useId, useState } from 'react';
 import type { Tool } from '../../api/types';
 import { firstSentence } from '../../lib/format';
 import { describeType } from '../../lib/schema';
+import { toolMeta } from '../../lib/toolMeta';
 import { Icon } from '../Icon';
 import styles from './ToolItem.module.css';
 
@@ -19,6 +20,7 @@ export function ToolItem({ tool, uses }: ToolItemProps) {
   const panelId = useId();
   const properties = Object.entries(tool.parameters.properties ?? {});
   const required = new Set(tool.parameters.required ?? []);
+  const meta = toolMeta(tool.name);
 
   return (
     <li className={styles.item}>
@@ -31,7 +33,9 @@ export function ToolItem({ tool, uses }: ToolItemProps) {
           setOpen((value) => !value);
         }}
       >
-        <Icon name="chevron" size={14} className={open ? styles.chevronOpen : styles.chevron} />
+        <span className={styles.chip} data-tone={meta.tone}>
+          <Icon name={meta.icon} size={15} />
+        </span>
         <span className={styles.titles}>
           <span className={styles.name}>{tool.name}</span>
           <span className={styles.summary}>{firstSentence(tool.description)}</span>
@@ -41,6 +45,7 @@ export function ToolItem({ tool, uses }: ToolItemProps) {
             {uses}×
           </span>
         )}
+        <Icon name="chevron" size={14} className={open ? styles.chevronOpen : styles.chevron} />
       </button>
 
       {open && (

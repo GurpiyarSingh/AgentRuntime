@@ -1,0 +1,145 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+}
+
+.item:hover,
+.item:focus-within {
+  background: var(--surface);
+}
+
+.active,
+.active:hover {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.open {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  padding: 7px 10px;
+  color: var(--text);
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.open:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.title {
+  overflow: hidden;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.active .title {
+  color: var(--accent);
+}
+
+.meta {
+  overflow: hidden;
+  font-size: 0.72rem;
+  color: var(--text-subtle);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Hidden until the row is hovered or focused, so titles get the full width. */
+.actions {
+  display: none;
+  gap: 2px;
+  padding-right: 4px;
+}
+
+.item:hover .actions,
+.item:focus-within .actions {
+  display: flex;
+}
+
+@media (hover: none) {
+  .actions {
+    display: flex;
+  }
+}
+
+.confirm {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding-right: 4px;
+}
+
+.iconButton {
+  display: grid;
+  place-items: center;
+  padding: 5px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.iconButton:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.iconButton:disabled {
+  opacity: 0.4;
+}
+
+.danger {
+  padding: 3px 9px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.renameInput {
+  flex: 1;
+  min-width: 0;
+  margin: 2px;
+  padding: 5px 8px;
+  font-size: 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.empty {
+  margin: 0;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  color: var(--text-subtle);
+}
+
+.error {
+  margin: 4px 10px;
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-radius: var(--radius-sm);
+}

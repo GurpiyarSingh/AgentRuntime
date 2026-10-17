@@ -9,6 +9,7 @@ from agent_runtime.agent.loop import AgentLoop
 from agent_runtime.api.app import create_app
 from agent_runtime.api.deps import get_agent_factory
 from agent_runtime.config import Settings
+from agent_runtime.files.workspace import Workspace
 from agent_runtime.runtime import AgentFactory
 
 from .fakes import FakeChatModel, final_turn, tool_call_turn, usage
@@ -33,9 +34,9 @@ def make_client(
     factory = AgentFactory(settings=settings, tools=app.state.tools)
 
     def override() -> object:
-        def build(model_id: str | None = None) -> AgentLoop:
+        def build(model_id: str | None = None, workspace: Workspace | None = None) -> AgentLoop:
             model.model_id = model_id or settings.openai_model
-            return factory(model_id, model=model)
+            return factory(model_id, model=model, workspace=workspace)
 
         return build
 
@@ -290,3 +291,90 @@ def test_chat_rejects_malformed_session_ids(workspace_dir: Path, session_id: str
         "/v1/chat", json={"message": "hi", "session_id": session_id}
     )
     assert response.status_code == 422
+
+
+# --- choosing the workspace directory --------------------------------------
+
+
+def test_chat_works_in_the_directory_the_request_chose(workspace_dir: Path, tmp_path: Path) -> None:
+    chosen = tmp_path / "project"
+    chosen.mkdir()
+    client = make_client(
+        workspace_dir,
+        [tool_call_turn("write_file", {"path": "a.txt", "content": "hi"}), final_turn("done")],
+    )
+
+    body = client.post("/v1/chat", json={"message": "write", "workspace": str(chosen)}).json()
+
+    assert body["tool_calls"][0]["is_error"] is False
+    assert (chosen / "a.txt").read_text(encoding="utf-8") == "hi"
+    assert not (workspace_dir / "a.txt").exists()
+
+
+def test_chat_refuses_a_missing_or_relative_directory(workspace_dir: Path, tmp_path: Path) -> None:
+    client = make_client(workspace_dir)
+
+    missing = client.post("/v1/chat", json={"message": "hi", "workspace": str(tmp_path / "nope")})
+    relative = client.post("/v1/chat", json={"message": "hi", "workspace": "some/dir"})
+
+    assert missing.status_code == 400
+    assert "not found" in missing.json()["detail"]
+    assert relative.status_code == 400
+
+
+def test_chat_refuses_another_directory_when_selection_is_off(
+    workspace_dir: Path, tmp_path: Path
+) -> None:
+    client = make_client(workspace_dir, workspace_selectable=False)
+
+    response = client.post("/v1/chat", json={"message": "hi", "workspace": str(tmp_path)})
+
+    assert response.status_code == 403
+    assert client.get("/health").json()["workspace"]["selectable"] is False
+
+
+def test_chosen_directory_must_be_under_a_browse_root(workspace_dir: Path, tmp_path: Path) -> None:
+    allowed = tmp_path / "allowed"
+    (allowed / "inner").mkdir(parents=True)
+    other = tmp_path / "other"
+    other.mkdir()
+    client = make_client(workspace_dir, [final_turn("ok")], workspace_browse_roots=str(allowed))
+
+    inside = client.post("/v1/chat", json={"message": "hi", "workspace": str(allowed / "inner")})
+    outside = client.post("/v1/chat", json={"message": "hi", "workspace": str(other)})
+
+    assert inside.status_code == 200
+    assert outside.status_code == 400
+    assert "outside" in outside.json()["detail"]
+
+
+def test_directories_lists_subfolders_only(workspace_dir: Path, tmp_path: Path) -> None:
+    (tmp_path / "b").mkdir()
+    (tmp_path / "A").mkdir()
+    (tmp_path / "file.txt").write_text("x", encoding="utf-8")
+    client = make_client(workspace_dir)
+
+    body = client.get("/v1/directories", params={"path": str(tmp_path)}).json()
+
+    names = [entry["name"] for entry in body["directories"]]
+    assert names == ["A", "b", "workspace"]
+    assert Path(body["path"]) == tmp_path.resolve()
+    assert Path(body["parent"]) == tmp_path.resolve().parent
+
+
+def test_directories_top_level_is_the_browse_roots(workspace_dir: Path, tmp_path: Path) -> None:
+    client = make_client(workspace_dir, workspace_browse_roots=str(tmp_path))
+
+    top = client.get("/v1/directories").json()
+    at_root = client.get("/v1/directories", params={"path": str(tmp_path)}).json()
+    escape = client.get("/v1/directories", params={"path": str(tmp_path.parent)})
+
+    assert top["path"] is None
+    assert [Path(entry["path"]) for entry in top["directories"]] == [tmp_path.resolve()]
+    assert at_root["parent"] is None
+    assert escape.status_code == 400
+
+
+def test_directories_forbidden_when_selection_is_off(workspace_dir: Path) -> None:
+    client = make_client(workspace_dir, workspace_selectable=False)
+    assert client.get("/v1/directories").status_code == 403

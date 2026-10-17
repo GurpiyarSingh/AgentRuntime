@@ -1,14 +1,14 @@
 .settings {
-  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
 
 .summary {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 16px;
-  font-size: 0.85rem;
-  font-weight: 500;
+  padding: 11px 16px;
+  font-size: 0.8rem;
+  font-weight: 600;
   color: var(--text-muted);
   cursor: pointer;
   list-style: none;
@@ -24,8 +24,8 @@
 
 .badge {
   margin-left: auto;
-  padding: 0 7px;
-  font-size: 0.72rem;
+  padding: 0 8px;
+  font-size: 0.68rem;
   color: var(--success);
   background: var(--success-soft);
   border-radius: 999px;
@@ -34,13 +34,14 @@
 .form {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 7px;
   padding: 0 16px 14px;
 }
 
 .label {
-  font-size: 0.8rem;
+  font-size: 0.76rem;
   font-weight: 600;
+  color: var(--text-muted);
 }
 
 .row {
@@ -51,39 +52,52 @@
 .input {
   flex: 1;
   min-width: 0;
-  padding: 6px 9px;
+  height: 34px;
+  padding: 0 10px;
   font-family: var(--font-mono);
-  font-size: 0.82rem;
-  background: var(--surface);
+  font-size: 0.8rem;
+  background: var(--surface-2);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
 }
 
+.input:focus {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .ghost {
   padding: 0 10px;
-  font-size: 0.8rem;
+  font-size: 0.76rem;
+  color: var(--text-muted);
   background: none;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
+}
+
+.ghost:hover {
+  color: var(--text);
+  background: var(--surface-hover);
 }
 
 .hint {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   color: var(--text-subtle);
 }
 
 .save {
   align-self: flex-start;
-  padding: 5px 14px;
-  font-size: 0.82rem;
+  padding: 6px 16px;
+  font-size: 0.8rem;
   font-weight: 600;
-  color: var(--accent-contrast);
-  background: var(--accent);
+  color: #fff;
+  background: var(--gradient-brand);
   border: none;
   border-radius: var(--radius-sm);
 }
 
 .save:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
 }

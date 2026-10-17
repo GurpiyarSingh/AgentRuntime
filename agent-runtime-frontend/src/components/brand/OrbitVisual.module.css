@@ -1,0 +1,186 @@
+.orbit {
+  --size: min(500px, 78vw);
+
+  position: relative;
+  width: var(--size);
+  height: var(--size);
+  flex-shrink: 0;
+}
+
+.halo {
+  position: absolute;
+  inset: 18%;
+  background:
+    radial-gradient(circle, rgb(139 92 246 / 45%), transparent 60%),
+    radial-gradient(circle at 70% 70%, rgb(34 211 238 / 25%), transparent 55%);
+  filter: blur(30px);
+  border-radius: 50%;
+  animation: breathe 6s ease-in-out infinite;
+}
+
+.ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: calc(var(--size) * var(--scale));
+  height: calc(var(--size) * var(--scale));
+  margin: calc(var(--size) * var(--scale) / -2) 0 0 calc(var(--size) * var(--scale) / -2);
+  border: 1px solid rgb(165 180 252 / 16%);
+  border-radius: 50%;
+  box-shadow:
+    inset 0 0 40px rgb(139 92 246 / 6%),
+    0 0 1px rgb(165 180 252 / 30%);
+  animation: spin var(--period) linear infinite var(--direction);
+}
+
+/* A comet of light running along each ring. */
+.ring::before {
+  position: absolute;
+  inset: -1px;
+  content: '';
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    rgb(167 139 250 / 70%) 40deg,
+    transparent 80deg
+  );
+  border-radius: 50%;
+  mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 calc(100% - 1px));
+}
+
+.slot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  transform: rotate(var(--angle)) translateX(calc(var(--size) * var(--scale) / 2))
+    rotate(calc(-1 * var(--angle)));
+}
+
+/* Satellites and core scale with the visual, so a small orbit never crowds. */
+.satellite {
+  --chip: calc(var(--size) * 0.092);
+
+  position: absolute;
+  top: calc(var(--chip) / -2);
+  left: calc(var(--chip) / -2);
+  display: grid;
+  place-items: center;
+  width: var(--chip);
+  height: var(--chip);
+  color: var(--tone);
+  background: rgb(13 15 25 / 78%);
+  border: 1px solid color-mix(in srgb, var(--tone) 40%, transparent);
+  border-radius: 30%;
+  box-shadow:
+    0 0 24px -4px color-mix(in srgb, var(--tone) 55%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 6%);
+  backdrop-filter: blur(8px);
+  /* Turn against the ring so the icon stays upright. */
+  animation: spin var(--period) linear infinite var(--counter);
+}
+
+.satellite svg {
+  width: 44%;
+  height: 44%;
+}
+
+.satellite[data-tone='blue'] {
+  --tone: #60a5fa;
+}
+
+.satellite[data-tone='violet'] {
+  --tone: #a78bfa;
+}
+
+.satellite[data-tone='pink'] {
+  --tone: #f472b6;
+}
+
+.satellite[data-tone='amber'] {
+  --tone: #fbbf24;
+}
+
+.satellite[data-tone='green'] {
+  --tone: #34d399;
+}
+
+.satellite[data-tone='cyan'] {
+  --tone: #22d3ee;
+}
+
+.core {
+  --core: calc(var(--size) * 0.168);
+
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: var(--core);
+  height: var(--core);
+  margin: calc(var(--core) / -2) 0 0 calc(var(--core) / -2);
+}
+
+.logo {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 28%;
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 12%),
+    0 0 60px -6px rgb(139 92 246 / 80%),
+    0 0 120px -20px rgb(34 211 238 / 60%);
+}
+
+.pulse {
+  position: absolute;
+  inset: 0;
+  border: 1.5px solid rgb(167 139 250 / 60%);
+  border-radius: 30%;
+  animation: pulse 3.2s var(--ease-out) infinite;
+}
+
+.spark {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 8px 2px rgb(167 139 250 / 70%);
+  opacity: 0;
+  animation: twinkle 4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 0.8;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(2.1);
+  }
+}
+
+@keyframes breathe {
+  50% {
+    opacity: 0.65;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+
+  50% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+}

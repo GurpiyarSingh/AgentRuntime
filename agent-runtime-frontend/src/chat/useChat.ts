@@ -6,7 +6,13 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 
 import { ApiError, type ApiClient } from '../api/client';
-import { chatReducer, initialChatState, type ChatAction, type ChatState } from './chatReducer';
+import {
+  chatReducer,
+  initialChatState,
+  type ChatAction,
+  type ChatState,
+  type Turn,
+} from './chatReducer';
 
 export interface SendOptions {
   /** Model id, or undefined for the server's default. */
@@ -20,13 +26,29 @@ export interface Chat {
   send: (text: string, options?: SendOptions) => Promise<void>;
   stop: () => void;
   reset: () => void;
+  /** Replace the conversation with a stored one; the next message continues it. */
+  load: (sessionId: string, turns: Turn[]) => void;
 }
+
+const ATTACHMENTS_HEADING = '\n\nAttached files (in the workspace):\n';
 
 /** Tell the agent which workspace files the user attached. */
 export function composeMessage(text: string, attachments: string[]): string {
   if (attachments.length === 0) return text;
   const list = attachments.map((path) => `- ${path}`).join('\n');
-  return `${text}\n\nAttached files (in the workspace):\n${list}`;
+  return `${text}${ATTACHMENTS_HEADING}${list}`;
+}
+
+/** Undo `composeMessage`: the text the user typed, and the files they attached. */
+export function splitMessage(message: string): { text: string; attachments: string[] } {
+  const at = message.lastIndexOf(ATTACHMENTS_HEADING);
+  if (at === -1) return { text: message, attachments: [] };
+  const attachments = message
+    .slice(at + ATTACHMENTS_HEADING.length)
+    .split('\n')
+    .map((line) => line.replace(/^- /, ''))
+    .filter(Boolean);
+  return { text: message.slice(0, at), attachments };
 }
 
 function newId(): string {
@@ -109,5 +131,13 @@ export function useChat(client: ApiClient): Chat {
     dispatch({ type: 'reset' });
   }, []);
 
-  return { state, send, stop, reset };
+  const load = useCallback((sessionId: string, turns: Turn[]) => {
+    generationRef.current += 1;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    sessionIdRef.current = sessionId;
+    dispatch({ type: 'load', sessionId, turns });
+  }, []);
+
+  return { state, send, stop, reset, load };
 }

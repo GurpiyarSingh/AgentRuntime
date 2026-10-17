@@ -38,7 +38,10 @@ FROM nginxinc/nginx-unprivileged:${NGINX_VERSION}-alpine AS runtime
 LABEL org.opencontainers.image.title="agent-runtime-frontend" \
       org.opencontainers.image.description="Agent Runtime web app (static files + API proxy)."
 
-ENV BACKEND_URL=http://backend:8000 \
+# NGINX_ENTRYPOINT_LOCAL_RESOLVERS has the base image export the container's
+# DNS servers as NGINX_LOCAL_RESOLVERS, which the template's `resolver` uses.
+ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
+    BACKEND_URL=http://backend:8000 \
     CLIENT_MAX_BODY_SIZE=30m \
     CSP_CONNECT_SRC="'self'"
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -59,6 +60,12 @@ class Settings(BaseSettings):
     workspace_dir: Path = Path("data/workspace")
     # When true, the agent gets no tool that creates or changes files.
     workspace_read_only: bool = False
+    # Let clients point the agent at another existing directory per request
+    # (the web app's "Browse…" button). Off = always WORKSPACE_DIR.
+    workspace_selectable: bool = True
+    # Comma-separated directories clients may browse and choose beneath.
+    # Empty = any directory this server process can read.
+    workspace_browse_roots: str = ""
     # Largest file the agent may read, or a client may upload.
     max_file_bytes: int = Field(default=25 * 1024 * 1024, ge=1024)
     # Most characters of a file handed to the model per read_file call;
@@ -77,6 +84,23 @@ class Settings(BaseSettings):
     # --- Sessions ------------------------------------------------------------
     session_ttl_s: float = Field(default=3600.0, gt=0)
     session_max_messages: int = Field(default=40, ge=2, le=500)
+
+    # --- Persistence ---------------------------------------------------------
+    # When set, sessions, transcripts and every run's events and tool calls
+    # are stored here and survive restarts, e.g.
+    # postgresql://postgres:secret@localhost:5432/agent_runtime
+    # Unset = sessions live in memory only and no activity is recorded.
+    database_url: SecretStr | None = None
+    # Log every SQL statement (noisy; for debugging).
+    database_echo: bool = False
+
+    # --- Sign-in (needs DATABASE_URL) ---------------------------------------
+    # With a database, the web app asks people to sign in, and each person
+    # sees only their own conversations. The first visitor creates the admin
+    # account. API_KEY, if set, still works for scripts (and sees everything).
+    auth_enabled: bool = True
+    # How long a sign-in lasts before the browser must sign in again.
+    auth_token_ttl_hours: float = Field(default=168.0, gt=0)
 
     # --- Server --------------------------------------------------------------
     host: str = "127.0.0.1"
@@ -98,6 +122,14 @@ class Settings(BaseSettings):
             raise ValueError(f"LOG_LEVEL must be one of {', '.join(_LOG_LEVELS)}")
         return level
 
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _blank_database_url(cls, value: object) -> object:
+        """Treat `DATABASE_URL=` (blank) as unset, so it can switch persistence off."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     @field_validator("openai_model")
     @classmethod
     def _known_model(cls, value: str) -> str:
@@ -110,6 +142,18 @@ class Settings(BaseSettings):
     def pricing_overrides(self) -> dict[str, ModelPricing]:
         """Per-model price corrections from `MODEL_PRICING_JSON` (empty by default)."""
         return parse_pricing_overrides(self.model_pricing_json)
+
+    @property
+    def auth_token_ttl(self) -> timedelta:
+        """`AUTH_TOKEN_TTL_HOURS` as a duration."""
+        return timedelta(hours=self.auth_token_ttl_hours)
+
+    @property
+    def browse_roots(self) -> list[Path]:
+        """`WORKSPACE_BROWSE_ROOTS` as paths (empty = no restriction)."""
+        return [
+            Path(root.strip()) for root in self.workspace_browse_roots.split(",") if root.strip()
+        ]
 
     @property
     def cors_origins(self) -> list[str]:

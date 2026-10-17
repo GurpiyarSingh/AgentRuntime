@@ -224,8 +224,38 @@ The ones you're most likely to want:
 | `ENVIRONMENT` | `prod` | `local` shows full error details (handy while debugging) |
 | `LOG_JSON` | `true` | `false` for human-readable logs |
 | `CORS_ALLOW_ORIGINS` | `*` | Only matters if a browser app on another origin calls the API directly |
+| `DATABASE_URL` | (none) | Store sessions and every run's activity in PostgreSQL. See [Storing sessions in PostgreSQL](#storing-sessions-in-postgresql) |
+| `AUTH_ENABLED` | `true` | With `DATABASE_URL`, the web app requires sign-in. Add accounts with `docker compose exec backend agent-runtime users add NAME` |
+| `WORKSPACE_BROWSE_ROOTS` | `/data` | Folders the web app's folder picker may open. Mount your own folders under `/data` to make them choosable |
 
 The full list is in [.env.example](.env.example).
+
+### Storing sessions in PostgreSQL
+
+Inside a container, `localhost` is the container itself, not your computer.
+A `DATABASE_URL` copied from your `.env` (`...@localhost:5432/...`) makes the
+container fail at startup. To use a PostgreSQL server running on your
+computer, use the host name **`host.docker.internal`** instead:
+
+```powershell
+docker run -d --name agent-backend -p 127.0.0.1:8000:8000 --env-file .env -e "DATABASE_URL=postgresql://postgres:PASSWORD@host.docker.internal:5432/agent_runtime" -v agent-workspace:/data/workspace agent-runtime-backend
+```
+
+With Docker Compose, put the URL in a `.env` file at the **repository root**
+(next to `docker-compose.yml`; it's git-ignored) instead:
+
+```
+DOCKER_DATABASE_URL=postgresql://postgres:PASSWORD@host.docker.internal:5432/agent_runtime
+```
+
+The database must already exist (`CREATE DATABASE agent_runtime;`); the tables
+are created when the container starts.
+
+> **`no pg_hba.conf entry for host "…"`** in `docker logs` means PostgreSQL
+> refused the container's address. By default it only accepts `127.0.0.1`.
+> Add a line for the address in the message to `pg_hba.conf` (e.g.
+> `host  agent_runtime  postgres  192.168.65.0/24  scram-sha-256` for Docker
+> Desktop), then reload PostgreSQL.
 
 > **Note:** if your `.env` contains `ENVIRONMENT=local` or `LOG_JSON=false`
 > (as `.env.example` does), those win over the image defaults. Remove them, or
@@ -294,8 +324,12 @@ web app once the API is healthy. Details are in the
 - **The container runs as a non-root user**, and the agent can only touch
   `/data/workspace`.
 - **Files the agent reads are sent to OpenAI** for processing.
-- **Run one container per workspace.** Conversations are kept in memory, so
-  don't scale this service to several replicas behind a load balancer.
+- **The folder picker stays inside `/data`** (`WORKSPACE_BROWSE_ROOTS`).
+  Don't widen it to `/`: the agent could then read `/proc/self/environ`,
+  which holds your OpenAI key and database password.
+- **Run one container.** Without `DATABASE_URL`, conversations are kept in
+  memory, so don't scale this service to several replicas behind a load
+  balancer.
 
 ---
 

@@ -247,3 +247,26 @@ async def test_interrupted_chat_turn_leaves_no_half_finished_turn() -> None:
 
     # Back to exactly what it was: no user message, no unanswered tool call.
     assert transcript == [AssistantMessage(content="earlier turn")]
+
+
+def test_users_add_and_list(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{(tmp_path / 'cli.db').as_posix()}")
+    monkeypatch.setattr("sys.stdin", io.StringIO("a long enough password\n"))
+
+    assert cli.main(["users", "add", "Carol", "--admin", "--password-stdin"]) == 0
+    assert cli.main(["users", "list"]) == 0
+
+    out = capsys.readouterr().out
+    assert "created admin 'carol'" in out
+    assert "carol" in out.split("created")[-1]
+
+
+def test_users_add_needs_a_database(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.chdir(Path(__file__).parent)  # No .env here.
+    assert cli.main(["users", "list"]) == 2
+    assert "DATABASE_URL" in capsys.readouterr().err

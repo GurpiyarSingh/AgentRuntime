@@ -4,6 +4,7 @@
     agent-runtime ask "summarise a.pdf"     one question, answer on stdout
     agent-runtime serve                     run the HTTP API
     agent-runtime tools | models            show what is available
+    agent-runtime users add NAME [--admin]  create a web app account
 
 Both front ends share everything below them: settings, the workspace, the
 tools, the loop and the run summary. The CLI only renders events. The
@@ -20,6 +21,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import getpass
 import io
 import os
 import sys
@@ -45,10 +47,13 @@ from agent_runtime.agent.messages import Message
 from agent_runtime.agent.openai import ModelConfigurationError
 from agent_runtime.agent.outcome import RunOutcome
 from agent_runtime.api.schemas import ChatResponse
+from agent_runtime.auth import MIN_PASSWORD_LENGTH
 from agent_runtime.config import Settings
 from agent_runtime.logging import configure_logging
 from agent_runtime.models import UnknownModelError, available_models, pricing_for
 from agent_runtime.runtime import AgentFactory, build_tools, build_workspace
+from agent_runtime.storage import DatabaseStore, create_database_store
+from agent_runtime.storage.users import UsernameTaken
 
 EXIT_OK = 0
 EXIT_RUN_FAILED = 1
@@ -317,6 +322,64 @@ def _tools(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _user_store(settings: Settings) -> DatabaseStore:
+    """The database the web app signs people in against, or `CliError`."""
+    if settings.database_url is None:
+        raise CliError("accounts need a database: set DATABASE_URL in .env")
+    return create_database_store(
+        settings.database_url.get_secret_value(),
+        max_messages=settings.session_max_messages,
+        token_ttl=settings.auth_token_ttl,
+    )
+
+
+def _read_password(from_stdin: bool) -> str:
+    """The new password: from stdin (for scripts), or typed twice, unechoed."""
+    if from_stdin:
+        password = sys.stdin.readline().rstrip("\n")
+    else:
+        password = getpass.getpass("Password: ")
+        if getpass.getpass("Repeat password: ") != password:
+            raise CliError("the passwords don't match")
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise CliError(f"the password needs at least {MIN_PASSWORD_LENGTH} characters")
+    return password
+
+
+async def _users_add(args: argparse.Namespace) -> int:
+    settings = _load_settings(args)
+    store = _user_store(settings)
+    password = _read_password(args.password_stdin)
+    try:
+        await store.create_schema()
+        user = await store.users.create(
+            args.username, password, display_name=args.display_name or "", is_admin=args.admin
+        )
+    except UsernameTaken as exc:
+        raise CliError(str(exc)) from exc
+    finally:
+        await store.close()
+    role = "admin" if user.is_admin else "user"
+    sys.stdout.write(f"created {role} {user.username!r}\n")
+    return EXIT_OK
+
+
+async def _users_list(args: argparse.Namespace) -> int:
+    store = _user_store(_load_settings(args))
+    try:
+        await store.create_schema()
+        users = await store.users.list()
+    finally:
+        await store.close()
+    for user in users:
+        role = "admin" if user.is_admin else "user "
+        seen = user.last_login_at.strftime("%Y-%m-%d %H:%M") if user.last_login_at else "never"
+        sys.stdout.write(f"{role}  {user.username:<24} last sign-in: {seen}\n")
+    if not users:
+        sys.stdout.write("no accounts yet: the first visitor to the web app creates the admin\n")
+    return EXIT_OK
+
+
 def _models(args: argparse.Namespace) -> int:
     settings = _load_settings(args)
     for info in available_models():
@@ -410,6 +473,27 @@ def build_parser() -> argparse.ArgumentParser:
 
     models = commands.add_parser("models", help="list the models you can choose")
     models.set_defaults(handler=_models)
+
+    users = commands.add_parser(
+        "users",
+        help="manage web app accounts (needs DATABASE_URL)",
+        description="Accounts people sign in to the web app with.",
+    )
+    user_commands = users.add_subparsers(
+        dest="user_command", metavar="ACTION", parser_class=_Parser, required=True
+    )
+    add = user_commands.add_parser("add", help="create an account (asks for its password)")
+    add.add_argument("username", help="letters, digits and _ . @ - (not case-sensitive)")
+    add.add_argument("--display-name", help="name shown in the web app")
+    add.add_argument(
+        "--admin", action="store_true", help="can also see sessions from before sign-in"
+    )
+    add.add_argument(
+        "--password-stdin", action="store_true", help="read the password from stdin (scripts)"
+    )
+    add.set_defaults(handler=lambda args: asyncio.run(_users_add(args)))
+    listing = user_commands.add_parser("list", help="show every account")
+    listing.set_defaults(handler=lambda args: asyncio.run(_users_list(args)))
     return parser
 
 

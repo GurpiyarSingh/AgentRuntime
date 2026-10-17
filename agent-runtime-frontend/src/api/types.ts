@@ -56,7 +56,30 @@ export interface Health {
   environment: string;
   model: string;
   tools: string[];
-  workspace: { read_only: boolean; path: string | null };
+  workspace: {
+    read_only: boolean;
+    path: string | null;
+    /** Whether a request may choose another directory to work in (absent on older servers). */
+    selectable?: boolean;
+  };
+  /** True when sessions are stored in a database and listed at `/v1/sessions`. */
+  history?: boolean;
+}
+
+/** `GET /v1/directories` item: a folder on the server. */
+export interface DirectoryEntry {
+  name: string;
+  /** Absolute path on the server. */
+  path: string;
+}
+
+/** `GET /v1/directories`: the subfolders of `path`, or the top-level locations if it is null. */
+export interface DirectoryListing {
+  path: string | null;
+  /** The folder above; null when `path` is a top-level location. */
+  parent: string | null;
+  directories: DirectoryEntry[];
+  truncated: boolean;
 }
 
 /** `POST /v1/files` response, and an item of `GET /v1/files`. */
@@ -71,6 +94,8 @@ export interface ChatRequest {
   message: string;
   session_id?: string;
   model?: string;
+  /** Absolute directory for the agent's tools; omit for the server's workspace. */
+  workspace?: string;
 }
 
 export interface Usage {
@@ -79,6 +104,74 @@ export interface Usage {
   total_tokens: number;
   /** `null` when the model has no known price, which is not the same as free. */
   cost_usd: number | null;
+}
+
+// --- Sign-in (`/v1/auth`, when the server has a database) ----------------------
+
+/** `GET /v1/auth/status`. */
+export interface AuthStatus {
+  enabled: boolean;
+  /** True until the first (admin) account exists. */
+  setup_required: boolean;
+}
+
+export interface User {
+  id: string;
+  username: string;
+  display_name: string;
+  is_admin: boolean;
+  created_at: string;
+  last_login_at: string | null;
+}
+
+/** `POST /v1/auth/login` and `/v1/auth/setup`. */
+export interface LoginResponse {
+  token: string;
+  user: User;
+}
+
+// --- Stored sessions (`/v1/sessions`, when the server has a database) ----------
+
+/** `GET /v1/sessions` item. */
+export interface SessionSummary {
+  id: string;
+  title: string;
+  model: string | null;
+  /** Absolute folder the latest run worked in. */
+  workspace: string | null;
+  created_at: string;
+  updated_at: string;
+  run_count: number;
+  usage: Usage;
+}
+
+export interface SessionsResponse {
+  sessions: SessionSummary[];
+}
+
+export type RunStatus = 'running' | 'completed' | 'failed' | 'cancelled';
+
+/** One stored run; `events` are what the stream sent (tokens merged per step). */
+export interface StoredRun {
+  id: string;
+  status: RunStatus;
+  user_message: string;
+  model: string;
+  workspace: string | null;
+  answer: string | null;
+  error: string | null;
+  steps_used: number;
+  tool_call_count: number;
+  usage: Usage;
+  started_at: string;
+  finished_at: string | null;
+  duration_s: number | null;
+  events: { type: string; data: unknown; created_at: string }[];
+}
+
+/** `GET /v1/sessions/{id}`. */
+export interface SessionDetail extends SessionSummary {
+  runs: StoredRun[];
 }
 
 // --- Streaming events (`POST /v1/chat/stream`) -----------------------------------

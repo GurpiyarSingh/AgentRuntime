@@ -23,10 +23,13 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /src
-# Metadata first: dependency layers stay cached until pyproject.toml changes.
+# Dependencies first, from pyproject.toml alone, so this slow layer stays
+# cached until the dependency list changes, not on every source edit.
 COPY pyproject.toml README.md ./
+RUN python -c "import tomllib; print('\n'.join(tomllib.load(open('pyproject.toml', 'rb'))['project']['dependencies']))" > requirements.txt \
+    && pip install -r requirements.txt
 COPY src ./src
-RUN pip install .
+RUN pip install --no-deps .
 
 # --- runtime --------------------------------------------------------------------
 FROM python:${PYTHON_VERSION}-slim AS runtime
@@ -48,11 +51,16 @@ RUN groupadd --system --gid 10001 agent \
 
 COPY --from=build /opt/venv /opt/venv
 
+# WORKSPACE_BROWSE_ROOTS keeps the web app's folder picker inside /data.
+# Without it a client could point the agent at any folder in the container,
+# e.g. /proc/self, whose `environ` holds OPENAI_API_KEY and DATABASE_URL.
+# Mount extra folders under /data (e.g. /data/projects) to make them choosable.
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     ENVIRONMENT=prod \
-    LOG_JSON=true
+    LOG_JSON=true \
+    WORKSPACE_BROWSE_ROOTS=/data
 
 WORKDIR /app
 USER agent
@@ -70,6 +78,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
 # (HOST=127.0.0.1, WORKSPACE_DIR=data/workspace) can't make the API
 # unreachable or write files outside the volume. Everything else (model,
 # limits, API_KEY, ...) comes from the environment.
-# One worker only: conversation sessions are held in memory.
+# One worker: without DATABASE_URL, conversations are held in memory.
 ENTRYPOINT ["agent-runtime"]
 CMD ["serve", "--host", "0.0.0.0", "--port", "8000", "--workspace", "/data/workspace"]

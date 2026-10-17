@@ -1,15 +1,18 @@
 /**
- * The application shell: tools on the left, chat on the right.
+ * The application shell: the sidebar (workspace, conversations, tools, you)
+ * on the left, the conversation on the right.
  *
- * Owns the app-wide state: the API key and model preference (persisted in
- * this browser), the server resources (health, tools, models) and the
- * conversation, and hands each column what it needs.
+ * Owns the app-wide state: model preference and workspace folder (persisted
+ * in this browser), the server resources (health, tools, models, stored
+ * sessions) and the conversation, and hands each column what it needs.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useApi } from './api/ApiContext';
+import type { User } from './api/types';
 import styles from './App.module.css';
+import { turnsFromSession } from './chat/history';
 import { useAttachments } from './chat/useAttachments';
 import { useChat } from './chat/useChat';
 import { ChatPanel } from './components/chat/ChatPanel';
@@ -21,12 +24,20 @@ import { loadSetting, saveSetting } from './lib/storage';
 interface AppProps {
   apiKey: string;
   onApiKeyChange: (key: string) => void;
+  /** The signed-in account; undefined when the server has no sign-in. */
+  user?: User | undefined;
+  onSignOut?: (() => void) | undefined;
 }
 
-export function App({ apiKey, onApiKeyChange }: AppProps) {
+export function App({ apiKey, onApiKeyChange, user, onSignOut }: AppProps) {
   const client = useApi();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [preferredModel, setPreferredModel] = useState(() => loadSetting('model'));
+  const [workspace, setWorkspace] = useState(() => {
+    const saved = loadSetting('workspace');
+    client.setWorkspace(saved); // Before any request, so the first chat already uses it.
+    return saved;
+  });
 
   const loadHealth = useCallback((signal: AbortSignal) => client.health(signal), [client]);
   const loadTools = useCallback((signal: AbortSignal) => client.tools(signal), [client]);
@@ -48,6 +59,53 @@ export function App({ apiKey, onApiKeyChange }: AppProps) {
   const changeModel = (id: string) => {
     setPreferredModel(id);
     saveSetting('model', id);
+  };
+
+  const changeWorkspace = (path: string) => {
+    client.setWorkspace(path);
+    setWorkspace(path);
+    saveSetting('workspace', path);
+    // Attachments were uploaded into the previous folder.
+    attachments.clear();
+  };
+
+  // Stored conversations, when the server has a database. Refetched whenever a
+  // run starts or ends, so the list shows new sessions and fresh totals.
+  const historyEnabled = health.data?.history === true;
+  const loadSessions = useCallback(
+    (signal: AbortSignal) => (historyEnabled ? client.sessions(signal) : Promise.resolve([])),
+    [client, historyEnabled],
+  );
+  const sessions = useResource(
+    loadSessions,
+    `${apiKey}|${user?.id ?? ''}|${String(chat.state.busy)}`,
+  );
+  const title = sessions.data?.find((session) => session.id === chat.state.sessionId)?.title;
+
+  const openSession = async (id: string) => {
+    const detail = await client.session(id);
+    chat.load(detail.id, turnsFromSession(detail));
+    attachments.clear();
+    // Continue in the folder the conversation was working in.
+    if (health.data?.workspace.selectable) {
+      const folder = detail.workspace ?? '';
+      changeWorkspace(folder === health.data.workspace.path ? '' : folder);
+    }
+    setSidebarOpen(false);
+  };
+
+  const renameSession = async (id: string, title: string) => {
+    await client.renameSession(id, title);
+    sessions.reload();
+  };
+
+  const deleteSession = async (id: string) => {
+    await client.deleteSession(id);
+    if (id === chat.state.sessionId) {
+      chat.reset();
+      attachments.clear();
+    }
+    sessions.reload();
   };
 
   const toolUsage = useMemo(() => {
@@ -83,6 +141,16 @@ export function App({ apiKey, onApiKeyChange }: AppProps) {
         toolUsage={toolUsage}
         apiKey={apiKey}
         onApiKeyChange={onApiKeyChange}
+        workspace={workspace}
+        onWorkspaceChange={changeWorkspace}
+        busy={chat.state.busy}
+        user={user}
+        onSignOut={onSignOut}
+        sessions={sessions}
+        activeSessionId={chat.state.sessionId}
+        onOpenSession={openSession}
+        onRenameSession={renameSession}
+        onDeleteSession={deleteSession}
         open={sidebarOpen}
         onClose={() => {
           setSidebarOpen(false);
@@ -104,6 +172,7 @@ export function App({ apiKey, onApiKeyChange }: AppProps) {
         models={models}
         model={model}
         onModelChange={changeModel}
+        title={title}
         onOpenSidebar={() => {
           setSidebarOpen(true);
         }}

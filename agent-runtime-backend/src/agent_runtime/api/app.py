@@ -11,15 +11,32 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from agent_runtime import __version__
+from agent_runtime.api.auth import router as auth_router
+from agent_runtime.api.directories import router as directories_router
 from agent_runtime.api.files import router as files_router
 from agent_runtime.api.routes import router
 from agent_runtime.api.schemas import ErrorResponse
+from agent_runtime.api.sessions import router as sessions_router
+from agent_runtime.auth import LoginThrottle
 from agent_runtime.config import Settings, get_settings
 from agent_runtime.logging import configure_logging
-from agent_runtime.runtime import build_tools, build_workspace
-from agent_runtime.sessions import SessionStore
+from agent_runtime.runtime import build_directory_policy, build_tools, build_workspace
+from agent_runtime.sessions import ConversationStore, SessionStore
+from agent_runtime.storage import DatabaseStore, create_database_store
 
 logger = logging.getLogger(__name__)
+
+
+def build_session_store(settings: Settings) -> ConversationStore:
+    """The database store when `DATABASE_URL` is set, otherwise in-memory sessions."""
+    if settings.database_url is not None:
+        return create_database_store(
+            settings.database_url.get_secret_value(),
+            max_messages=settings.session_max_messages,
+            token_ttl=settings.auth_token_ttl,
+            echo=settings.database_echo,
+        )
+    return SessionStore(ttl_s=settings.session_ttl_s, max_messages=settings.session_max_messages)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -40,7 +57,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "tools": ",".join(app.state.tools.names()),
             },
         )
+        if isinstance(app.state.sessions, DatabaseStore):
+            # Fail at startup, not on the first chat, if the database is unreachable.
+            await app.state.sessions.create_schema()
+            await app.state.sessions.users.purge_expired_tokens()
+            logger.info("sessions are stored in the database")
         yield
+        if isinstance(app.state.sessions, DatabaseStore):
+            await app.state.sessions.close()
         logger.info("shutting down %s", settings.app_name)
 
     app = FastAPI(
@@ -55,10 +79,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.state.settings = settings
     app.state.workspace = build_workspace(settings)
+    app.state.directories = build_directory_policy(settings, app.state.workspace)
     app.state.tools = build_tools(settings, app.state.workspace)
-    app.state.sessions = SessionStore(
-        ttl_s=settings.session_ttl_s, max_messages=settings.session_max_messages
-    )
+    app.state.sessions = build_session_store(settings)
+    app.state.login_throttle = LoginThrottle()
 
     # Auth is a header (X-API-Key), never a cookie, so browsers never need
     # to send credentials. Allowing them alongside a wildcard origin would
@@ -82,4 +106,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(router)
     app.include_router(files_router)
+    app.include_router(directories_router)
+    app.include_router(sessions_router)
+    app.include_router(auth_router)
     return app

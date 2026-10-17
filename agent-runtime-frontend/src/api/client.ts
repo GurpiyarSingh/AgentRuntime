@@ -11,11 +11,18 @@ import { readSse } from './sse';
 import {
   AGENT_EVENT_TYPES,
   type AgentEvent,
+  type AuthStatus,
   type ChatRequest,
+  type DirectoryListing,
   type Health,
+  type LoginResponse,
   type ModelsResponse,
+  type SessionDetail,
+  type SessionsResponse,
+  type SessionSummary,
   type Tool,
   type ToolsResponse,
+  type User,
   type WorkspaceFile,
 } from './types';
 
@@ -40,6 +47,10 @@ export interface ApiClientOptions {
   baseUrl: string;
   /** Returns the current API key (read per request, so a changed key applies at once). */
   getApiKey?: () => string;
+  /** Returns the signed-in user's token, sent as `Authorization: Bearer`. */
+  getToken?: () => string;
+  /** Called when a request made with a token is refused (expired or revoked). */
+  onUnauthorized?: () => void;
   /** Injectable for tests. */
   fetch?: typeof fetch;
 }
@@ -70,11 +81,17 @@ async function errorMessage(response: Response): Promise<string> {
 export class ApiClient {
   private readonly baseUrl: string;
   private readonly getApiKey: () => string;
+  private readonly getToken: () => string;
+  private readonly onUnauthorized: () => void;
   private readonly fetchImpl: typeof fetch;
+  /** Directory the agent works in for chats and file transfers; empty = the server's own. */
+  private workspaceDir = '';
 
   constructor(options: ApiClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '');
     this.getApiKey = options.getApiKey ?? (() => '');
+    this.getToken = options.getToken ?? (() => '');
+    this.onUnauthorized = options.onUnauthorized ?? (() => undefined);
     // Bound so it is never called with the client as `this` (an "Illegal invocation").
     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
   }
@@ -83,6 +100,8 @@ export class ApiClient {
     const headers = new Headers(init.headers);
     const apiKey = this.getApiKey();
     if (apiKey) headers.set('X-API-Key', apiKey);
+    const token = this.getToken();
+    if (token) headers.set('Authorization', `Bearer ${token}`);
 
     let response: Response;
     try {
@@ -91,13 +110,60 @@ export class ApiClient {
       if (error instanceof DOMException && error.name === 'AbortError') throw error;
       throw new ApiError(0, 'Cannot reach the agent server. Is it running?');
     }
-    if (!response.ok) throw new ApiError(response.status, await errorMessage(response));
+    if (!response.ok) {
+      if (response.status === 401 && token) this.onUnauthorized();
+      throw new ApiError(response.status, await errorMessage(response));
+    }
     return response;
+  }
+
+  private async postJson<T>(path: string, body: unknown): Promise<T> {
+    const response = await this.request(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return (await response.json()) as T;
+  }
+
+  /** Choose the directory every later chat, upload and download works in ('' = server default). */
+  setWorkspace(path: string): void {
+    this.workspaceDir = path;
+  }
+
+  get workspace(): string {
+    return this.workspaceDir;
+  }
+
+  /** `?workspace=` for the files API, or nothing when using the server's workspace. */
+  private workspaceQuery(): string {
+    return this.workspaceDir ? `?${new URLSearchParams({ workspace: this.workspaceDir })}` : '';
   }
 
   private async getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
     const response = await this.request(path, signal ? { signal } : {});
     return (await response.json()) as T;
+  }
+
+  authStatus(signal?: AbortSignal): Promise<AuthStatus> {
+    return this.getJson<AuthStatus>('/v1/auth/status', signal);
+  }
+
+  login(username: string, password: string): Promise<LoginResponse> {
+    return this.postJson<LoginResponse>('/v1/auth/login', { username, password });
+  }
+
+  /** Create the first (admin) account; only allowed while there is none. */
+  setup(account: { username: string; password: string; display_name: string }) {
+    return this.postJson<LoginResponse>('/v1/auth/setup', account);
+  }
+
+  me(signal?: AbortSignal): Promise<User> {
+    return this.getJson<User>('/v1/auth/me', signal);
+  }
+
+  async logout(): Promise<void> {
+    await this.request('/v1/auth/logout', { method: 'POST' });
   }
 
   health(signal?: AbortSignal): Promise<Health> {
@@ -112,12 +178,42 @@ export class ApiClient {
     return this.getJson<ModelsResponse>('/v1/models', signal);
   }
 
+  async sessions(signal?: AbortSignal): Promise<SessionSummary[]> {
+    return (await this.getJson<SessionsResponse>('/v1/sessions', signal)).sessions;
+  }
+
+  session(id: string, signal?: AbortSignal): Promise<SessionDetail> {
+    return this.getJson<SessionDetail>(`/v1/sessions/${encodeURIComponent(id)}`, signal);
+  }
+
+  async renameSession(id: string, title: string): Promise<SessionSummary> {
+    const response = await this.request(`/v1/sessions/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    });
+    return (await response.json()) as SessionSummary;
+  }
+
+  async deleteSession(id: string): Promise<void> {
+    await this.request(`/v1/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  /** The subfolders of server directory `path`, or the top-level locations if omitted. */
+  directories(path?: string, signal?: AbortSignal): Promise<DirectoryListing> {
+    const query = path ? `?${new URLSearchParams({ path })}` : '';
+    return this.getJson<DirectoryListing>(`/v1/directories${query}`, signal);
+  }
+
   /** Upload a file into the workspace folder `folder` (e.g. `"uploads/"`). */
   async uploadFile(file: File, folder: string): Promise<WorkspaceFile> {
     const form = new FormData();
     form.append('file', file);
     form.append('path', folder);
-    const response = await this.request('/v1/files', { method: 'POST', body: form });
+    const response = await this.request(`/v1/files${this.workspaceQuery()}`, {
+      method: 'POST',
+      body: form,
+    });
     return (await response.json()) as WorkspaceFile;
   }
 
@@ -129,7 +225,7 @@ export class ApiClient {
    */
   async downloadFile(path: string): Promise<Blob> {
     const encoded = path.split('/').map(encodeURIComponent).join('/');
-    const response = await this.request(`/v1/files/${encoded}`);
+    const response = await this.request(`/v1/files/${encoded}${this.workspaceQuery()}`);
     return response.blob();
   }
 
@@ -143,7 +239,9 @@ export class ApiClient {
     const response = await this.request('/v1/chat/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(
+        this.workspaceDir && !body.workspace ? { ...body, workspace: this.workspaceDir } : body,
+      ),
       signal,
     });
     if (!response.body) throw new ApiError(response.status, 'The server sent an empty stream.');

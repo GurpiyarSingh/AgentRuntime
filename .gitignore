@@ -1,0 +1,2 @@
+# Compose-only settings (see docker-compose.yml). Never commit them.
+.env

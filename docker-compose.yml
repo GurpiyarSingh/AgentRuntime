@@ -5,6 +5,8 @@
 #   docker compose down               stop (the workspace volume is kept)
 #
 # Settings come from agent-runtime-backend/.env (OPENAI_API_KEY at least).
+# Compose-only values (DOCKER_DATABASE_URL) come from a .env file next to this
+# one, which is git-ignored.
 
 name: agent-runtime
 
@@ -15,9 +17,28 @@ services:
     env_file:
       - path: ./agent-runtime-backend/.env
         required: false
+    environment:
+      # Inside the container "localhost" is the container itself, so the
+      # backend .env's DATABASE_URL (localhost:5432) can't be used as is.
+      # To store sessions in PostgreSQL on this machine, put this in ./.env:
+      #   DOCKER_DATABASE_URL=postgresql://USER:PASSWORD@host.docker.internal:5432/agent_runtime
+      # Unset = sessions are kept in memory only.
+      DATABASE_URL: ${DOCKER_DATABASE_URL:-}
+      # The web app's nginx is the only client and passes on the browser's
+      # address in X-Forwarded-For; trust it so sessions record real client
+      # IPs. (Remove this if you publish port 8000 below: any caller could
+      # then claim any address.)
+      FORWARDED_ALLOW_IPS: "*"
+    extra_hosts:
+      # Docker Desktop provides host.docker.internal; this adds it on Linux.
+      - "host.docker.internal:host-gateway"
     volumes:
       # Uploads and every file the agent creates; survives `down` and rebuilds.
       - workspace:/data/workspace
+      # The web app's folder picker browses /data inside the container, not
+      # this machine. To let the agent work in your own folders, mount them
+      # under /data, e.g.:
+      # - ~/projects:/data/projects
     restart: unless-stopped
     # Not published: the web app proxies /v1 and /health to it. Uncomment to
     # call the API directly from this machine (scripts, the CLI, /docs).

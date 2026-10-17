@@ -1,33 +1,66 @@
 .item {
+  border: 1px solid transparent;
   border-radius: var(--radius);
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+
+.item:hover {
+  background: var(--surface);
+}
+
+.item:has(.panel) {
+  background: var(--surface);
+  border-color: var(--border);
 }
 
 .header {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  gap: 10px;
+  align-items: center;
   width: 100%;
-  padding: 8px 10px;
+  padding: 7px 8px;
+  color: var(--text);
   text-align: left;
   background: none;
   border: none;
   border-radius: var(--radius);
 }
 
-.header:hover {
-  background: var(--surface-muted);
+/* Tool tones, shared by the chat's tool cards. */
+.chip {
+  --tone: var(--tone-violet);
+
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 13%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tone) 22%, transparent);
+  border-radius: 9px;
 }
 
-.chevron,
-.chevronOpen {
-  flex: none;
-  margin-top: 4px;
-  color: var(--text-subtle);
-  transition: transform 120ms ease;
+.chip[data-tone='blue'] {
+  --tone: var(--tone-blue);
 }
 
-.chevronOpen {
-  transform: rotate(90deg);
+.chip[data-tone='pink'] {
+  --tone: var(--tone-pink);
+}
+
+.chip[data-tone='amber'] {
+  --tone: var(--tone-amber);
+}
+
+.chip[data-tone='green'] {
+  --tone: var(--tone-green);
+}
+
+.chip[data-tone='cyan'] {
+  --tone: var(--tone-cyan);
 }
 
 .titles {
@@ -39,32 +72,48 @@
 
 .name {
   font-family: var(--font-mono);
-  font-size: 0.86rem;
+  font-size: 0.78rem;
   font-weight: 600;
 }
 
 .summary {
-  font-size: 0.82rem;
-  color: var(--text-muted);
+  overflow: hidden;
+  font-size: 0.74rem;
+  color: var(--text-subtle);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .uses {
-  flex: none;
+  flex-shrink: 0;
   padding: 1px 7px;
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 0.68rem;
+  font-weight: 700;
   color: var(--accent);
   background: var(--accent-soft);
   border-radius: 999px;
 }
 
+.chevron,
+.chevronOpen {
+  flex-shrink: 0;
+  color: var(--text-subtle);
+  transition: transform 160ms var(--ease-out);
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
+}
+
 .panel {
-  padding: 2px 10px 10px 32px;
-  font-size: 0.82rem;
+  padding: 2px 12px 12px 48px;
+  animation: fade-up 200ms var(--ease-out);
 }
 
 .description {
   margin: 0 0 10px;
+  font-size: 0.8rem;
+  line-height: 1.5;
   color: var(--text-muted);
 }
 
@@ -78,29 +127,32 @@
 .param dt {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
   gap: 6px;
+  align-items: baseline;
 }
 
 .param dd {
   margin: 2px 0 0;
-  color: var(--text-muted);
+  font-size: 0.76rem;
+  color: var(--text-subtle);
 }
 
 .paramName {
+  font-size: 0.76rem;
   font-weight: 600;
+  color: var(--text);
 }
 
 .paramType {
   font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: var(--text-subtle);
+  font-size: 0.7rem;
+  color: var(--tone-cyan);
 }
 
 .required,
 .default {
   padding: 0 6px;
-  font-size: 0.7rem;
+  font-size: 0.66rem;
   border-radius: 999px;
 }
 
@@ -110,11 +162,12 @@
 }
 
 .default {
-  color: var(--text-muted);
-  background: var(--surface-muted);
+  color: var(--text-subtle);
+  background: var(--surface-2);
 }
 
 .noParams {
   margin: 0;
+  font-size: 0.76rem;
   color: var(--text-subtle);
 }
